@@ -1,0 +1,617 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Spot It Party</title>
+  <style>
+    :root {
+      --bg-1: #f3efe7;
+      --bg-2: #e8f2ff;
+      --ink: #1b1b1b;
+      --accent: #0e5fd8;
+      --accent-2: #f08b2d;
+      --card: rgba(255, 255, 255, 0.82);
+      --stroke: rgba(27, 27, 27, 0.12);
+      --shadow: 0 18px 40px rgba(0,0,0,0.12);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif;
+      color: var(--ink);
+      background: radial-gradient(circle at 20% 10%, #fff, transparent 40%),
+                  radial-gradient(circle at 90% 20%, #ffe9d2, transparent 45%),
+                  linear-gradient(140deg, var(--bg-1), var(--bg-2));
+      min-height: 100vh;
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+    }
+
+    .shell {
+      width: min(1200px, 94vw);
+      margin: 24px auto 48px;
+      display: grid;
+      gap: 20px;
+      grid-template-rows: auto auto 1fr;
+      position: relative;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-radius: 16px;
+      background: var(--card);
+      border: 1px solid var(--stroke);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(6px);
+      animation: rise 0.6s ease-out;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 1.4rem;
+      letter-spacing: 0.04em;
+    }
+
+    .score {
+      display: flex;
+      gap: 12px;
+      font-size: 1rem;
+      align-items: center;
+    }
+
+    .score span {
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--stroke);
+      background: #fff;
+      font-weight: 600;
+    }
+
+    .content {
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--stroke);
+      border-radius: 18px;
+      padding: 16px 18px;
+      box-shadow: var(--shadow);
+    }
+
+    .board {
+      display: grid;
+      place-items: center;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      border-radius: 20px;
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--stroke);
+      background: repeating-linear-gradient(
+        45deg,
+        rgba(255,255,255,0.7),
+        rgba(255,255,255,0.7) 10px,
+        rgba(240,240,240,0.7) 10px,
+        rgba(240,240,240,0.7) 20px
+      );
+      animation: bloom 0.8s ease-out;
+    }
+
+    .board img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .board canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .row input[type="text"] {
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--stroke);
+      min-width: 180px;
+    }
+
+    .row button {
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .row button.secondary {
+      background: var(--accent-2);
+    }
+
+    .row button:active {
+      transform: scale(0.98);
+    }
+
+    .disabled {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
+    .team-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .team {
+      border-radius: 14px;
+      padding: 10px;
+      border: 1px dashed var(--stroke);
+      min-height: 120px;
+      cursor: pointer;
+      transition: background 0.2s ease, transform 0.2s ease;
+    }
+
+    .team.selected {
+      background: rgba(14, 95, 216, 0.12);
+      transform: translateY(-2px);
+    }
+
+    .team.disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
+    .team h3 {
+      margin: 0 0 6px;
+      font-size: 1rem;
+    }
+
+    .team ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      font-size: 0.95rem;
+    }
+
+    .team li {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #aaa;
+      border: 1px solid rgba(0,0,0,0.2);
+    }
+
+    .meta {
+      font-size: 0.9rem;
+      opacity: 0.75;
+    }
+
+    .timer {
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    .status {
+      min-height: 24px;
+      font-size: 0.95rem;
+      color: #444;
+    }
+
+    .hidden { display: none; }
+
+    @keyframes rise {
+      from { transform: translateY(10px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    @keyframes bloom {
+      from { transform: scale(0.98); opacity: 0.7; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    @media (max-width: 900px) {
+      .content { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <h1>Spot It Arena</h1>
+      <div class="score">
+        <span id="scoreA">Team A: 0</span>
+        <span id="scoreB">Team B: 0</span>
+        <span class="timer" id="timer">00:00</span>
+      </div>
+    </header>
+
+    <div class="content">
+      <div class="panel">
+        <div class="board" id="board">
+          <img id="roundImage" alt="round" />
+          <canvas id="overlay"></canvas>
+        </div>
+        <div class="row" style="margin-top: 12px; justify-content: space-between;">
+          <div>
+            <div class="meta">Round: <span id="roundNumber">0</span> · Turn: <span id="turn">-</span></div>
+            <div class="status" id="status"></div>
+          </div>
+          <div class="row hidden" id="hostControls">
+            <input type="number" id="roundInput" min="1" placeholder="Round #" style="width: 90px;" />
+            <input type="number" id="durationInput" min="5" max="600" value="30" style="width: 90px;" />
+            <button id="startRound">Start round</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="row" id="profileControls">
+          <input type="text" id="nameInput" placeholder="Your name" />
+          <input type="color" id="colorInput" value="#3f8cff" />
+          <button id="saveProfile">Set name</button>
+        </div>
+        <div class="meta" style="margin-top: 8px;">Pick a team (click a panel).</div>
+        <div class="team-grid" style="margin-top: 10px;">
+          <div class="team" id="teamA">
+            <h3>Team A (<span id="countA">0</span>)</h3>
+            <ul id="listA"></ul>
+          </div>
+          <div class="team" id="teamB">
+            <h3>Team B (<span id="countB">0</span>)</h3>
+            <ul id="listB"></ul>
+          </div>
+        </div>
+        <div style="margin-top: 12px;" class="meta" id="inviteBox"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const wsProtocol = location.protocol === "https:" ? "wss" : "ws";
+    const ws = new WebSocket(`${wsProtocol}://${location.host}/ws`);
+
+    const state = {
+      roomId: null,
+      playerId: null,
+      isHost: false,
+      team: null,
+      phase: "lobby",
+      teamTurn: null,
+      roundNumber: 0,
+      clickRadius: 0.05,
+      myClick: null,
+      opponentClicks: [],
+      revealClicks: [],
+      teamCircle: null,
+      solutionCircle: null,
+      endsAt: null,
+      timerInterval: null,
+    };
+
+    const elements = {
+      scoreA: document.getElementById("scoreA"),
+      scoreB: document.getElementById("scoreB"),
+      timer: document.getElementById("timer"),
+      status: document.getElementById("status"),
+      roundNumber: document.getElementById("roundNumber"),
+      turn: document.getElementById("turn"),
+      nameInput: document.getElementById("nameInput"),
+      colorInput: document.getElementById("colorInput"),
+      saveProfile: document.getElementById("saveProfile"),
+      profileControls: document.getElementById("profileControls"),
+      teamA: document.getElementById("teamA"),
+      teamB: document.getElementById("teamB"),
+      listA: document.getElementById("listA"),
+      listB: document.getElementById("listB"),
+      countA: document.getElementById("countA"),
+      countB: document.getElementById("countB"),
+      inviteBox: document.getElementById("inviteBox"),
+      hostControls: document.getElementById("hostControls"),
+      roundInput: document.getElementById("roundInput"),
+      durationInput: document.getElementById("durationInput"),
+      startRound: document.getElementById("startRound"),
+      board: document.getElementById("board"),
+      roundImage: document.getElementById("roundImage"),
+      overlay: document.getElementById("overlay"),
+    };
+
+    function send(msg) {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(msg));
+      }
+    }
+
+    function setStatus(message) {
+      elements.status.textContent = message || "";
+    }
+
+    function updateTimer() {
+      if (!state.endsAt) {
+        elements.timer.textContent = "00:00";
+        return;
+      }
+      const remaining = Math.max(0, Math.ceil(state.endsAt - Date.now() / 1000));
+      const mins = String(Math.floor(remaining / 60)).padStart(2, "0");
+      const secs = String(remaining % 60).padStart(2, "0");
+      elements.timer.textContent = `${mins}:${secs}`;
+      if (remaining === 0) {
+        clearInterval(state.timerInterval);
+        state.timerInterval = null;
+      }
+    }
+
+    function startTimer(endsAt) {
+      state.endsAt = endsAt;
+      if (state.timerInterval) {
+        clearInterval(state.timerInterval);
+      }
+      updateTimer();
+      state.timerInterval = setInterval(updateTimer, 250);
+    }
+
+    function updateRoster(players) {
+      elements.listA.innerHTML = "";
+      elements.listB.innerHTML = "";
+      let countA = 0;
+      let countB = 0;
+      players.forEach((player) => {
+        const li = document.createElement("li");
+        const dot = document.createElement("span");
+        dot.className = "dot";
+        dot.style.background = player.color;
+        li.appendChild(dot);
+        const name = document.createElement("span");
+        name.textContent = player.name || "(unnamed)";
+        li.appendChild(name);
+        if (player.team === "A") {
+          elements.listA.appendChild(li);
+          countA += 1;
+        } else if (player.team === "B") {
+          elements.listB.appendChild(li);
+          countB += 1;
+        }
+        if (player.id === state.playerId) {
+          state.team = player.team;
+        }
+      });
+      elements.countA.textContent = countA;
+      elements.countB.textContent = countB;
+      elements.teamA.classList.toggle("selected", state.team === "A");
+      elements.teamB.classList.toggle("selected", state.team === "B");
+    }
+
+    function updateScores(scores) {
+      elements.scoreA.textContent = `Team A: ${scores.A ?? 0}`;
+      elements.scoreB.textContent = `Team B: ${scores.B ?? 0}`;
+    }
+
+    function resizeCanvas() {
+      const rect = elements.board.getBoundingClientRect();
+      elements.overlay.width = rect.width;
+      elements.overlay.height = rect.height;
+      drawOverlay();
+    }
+
+    function drawCircle(ctx, x, y, r, color, width = 3, fill = false, alpha = 1) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      if (fill) {
+        ctx.fillStyle = color;
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawOverlay() {
+      const ctx = elements.overlay.getContext("2d");
+      if (!ctx) return;
+      ctx.clearRect(0, 0, elements.overlay.width, elements.overlay.height);
+      const w = elements.overlay.width;
+      const h = elements.overlay.height;
+      const toPx = (p, axis) => (axis === "x" ? p * w : p * h);
+
+      if (state.phase === "active") {
+        if (state.team === state.teamTurn) {
+          if (state.myClick) {
+            drawCircle(ctx, toPx(state.myClick.x, "x"), toPx(state.myClick.y, "y"),
+              state.clickRadius * w, state.myClick.color, 3, false, 0.9);
+          }
+        } else {
+          state.opponentClicks.forEach((click) => {
+            drawCircle(ctx, toPx(click.x, "x"), toPx(click.y, "y"),
+              state.clickRadius * w, click.color, 3, false, 0.7);
+          });
+        }
+      }
+
+      if (state.phase === "reveal") {
+        state.revealClicks.forEach((click) => {
+          drawCircle(ctx, toPx(click.x, "x"), toPx(click.y, "y"),
+            state.clickRadius * w, click.color, 3, false, 0.7);
+        });
+        if (state.teamCircle) {
+          drawCircle(ctx, toPx(state.teamCircle.x, "x"), toPx(state.teamCircle.y, "y"),
+            state.teamCircle.r * w, "#0e5fd8", 4, false, 0.9);
+        }
+        if (state.solutionCircle) {
+          drawCircle(ctx, toPx(state.solutionCircle.x, "x"), toPx(state.solutionCircle.y, "y"),
+            state.solutionCircle.r * w, "#d62828", 4, false, 0.9);
+        }
+      }
+    }
+
+    elements.saveProfile.addEventListener("click", () => {
+      const name = elements.nameInput.value.trim();
+      const color = elements.colorInput.value;
+      send({ type: "set_profile", name, color });
+    });
+
+    elements.teamA.addEventListener("click", () => {
+      if (state.isHost) return;
+      send({ type: "join_team", team: "A" });
+    });
+    elements.teamB.addEventListener("click", () => {
+      if (state.isHost) return;
+      send({ type: "join_team", team: "B" });
+    });
+
+    elements.startRound.addEventListener("click", () => {
+      const roundNumber = parseInt(elements.roundInput.value, 10);
+      const duration = parseInt(elements.durationInput.value, 10);
+      send({ type: "start_round", round_number: roundNumber, duration });
+    });
+
+    elements.board.addEventListener("click", (event) => {
+      if (state.phase !== "active") return;
+      if (state.team !== state.teamTurn) return;
+      const rect = elements.board.getBoundingClientRect();
+      const x = (event.clientX - rect.left) / rect.width;
+      const y = (event.clientY - rect.top) / rect.height;
+      send({ type: "click", x, y });
+    });
+
+    ws.addEventListener("open", () => {
+      const params = new URLSearchParams(window.location.search);
+      const roomParam = params.get("room");
+      if (roomParam) {
+        send({ type: "join_room", room_id: roomParam });
+      } else {
+        send({ type: "create_room" });
+      }
+    });
+
+    ws.addEventListener("message", (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type === "room_created") {
+        state.roomId = msg.room_id;
+        state.playerId = msg.player_id;
+        state.isHost = true;
+        elements.hostControls.classList.remove("hidden");
+        elements.profileControls.classList.add("disabled");
+        elements.teamA.classList.add("disabled");
+        elements.teamB.classList.add("disabled");
+        elements.inviteBox.textContent = `Invite link: ${location.origin}${msg.invite_path}`;
+        setStatus("Room created. Share the invite path.");
+        return;
+      }
+      if (msg.type === "room_joined") {
+        state.roomId = msg.room_id;
+        state.playerId = msg.player_id;
+        state.isHost = false;
+        elements.hostControls.classList.add("hidden");
+        elements.profileControls.classList.remove("disabled");
+        elements.teamA.classList.remove("disabled");
+        elements.teamB.classList.remove("disabled");
+        setStatus("Connected to room.");
+        return;
+      }
+      if (msg.type === "room_update") {
+        updateRoster(msg.players || []);
+        updateScores(msg.scores || { A: 0, B: 0 });
+        state.roundNumber = msg.round_number || 0;
+        state.phase = msg.phase || "lobby";
+        state.teamTurn = msg.team_turn || null;
+        elements.roundNumber.textContent = state.roundNumber;
+        elements.turn.textContent = state.teamTurn || "-";
+        state.isHost = msg.host_id === state.playerId;
+        elements.hostControls.classList.toggle("hidden", !state.isHost);
+        elements.profileControls.classList.toggle("disabled", state.isHost);
+        elements.teamA.classList.toggle("disabled", state.isHost);
+        elements.teamB.classList.toggle("disabled", state.isHost);
+        drawOverlay();
+        return;
+      }
+      if (msg.type === "round_started") {
+        state.phase = "active";
+        state.teamTurn = msg.team_turn;
+        state.roundNumber = msg.round_number;
+        state.clickRadius = msg.click_radius || 0.05;
+        state.myClick = null;
+        state.opponentClicks = [];
+        state.revealClicks = [];
+        state.teamCircle = null;
+        state.solutionCircle = null;
+        elements.roundNumber.textContent = state.roundNumber;
+        elements.turn.textContent = state.teamTurn || "-";
+        if (msg.image_url) {
+          elements.roundImage.src = msg.image_url;
+        } else {
+          elements.roundImage.removeAttribute("src");
+        }
+        startTimer(msg.ends_at);
+        setStatus(`Round ${msg.round_number} started.`);
+        drawOverlay();
+        return;
+      }
+      if (msg.type === "your_click") {
+        state.myClick = msg.click;
+        drawOverlay();
+        return;
+      }
+      if (msg.type === "click_update") {
+        state.opponentClicks = msg.clicks || [];
+        drawOverlay();
+        return;
+      }
+      if (msg.type === "round_reveal") {
+        state.phase = "reveal";
+        state.revealClicks = msg.clicks || [];
+        state.teamCircle = msg.team_circle;
+        state.solutionCircle = msg.solution_circle;
+        if (msg.reveal_url) {
+          elements.roundImage.src = msg.reveal_url;
+        }
+        updateScores(msg.scores || { A: 0, B: 0 });
+        setStatus(msg.won ? "Point awarded!" : "No point this round.");
+        drawOverlay();
+        return;
+      }
+      if (msg.type === "error") {
+        setStatus(msg.message);
+      }
+    });
+
+    const resizeObserver = new ResizeObserver(resizeCanvas);
+    resizeObserver.observe(elements.board);
+    window.addEventListener("load", resizeCanvas);
+  </script>
+</body>
+</html>
