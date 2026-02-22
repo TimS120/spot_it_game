@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spot It Lobby</title>
+    <style>
+      :root {
+        --bg-1: #f6f1e7;
+        --bg-2: #dfeef2;
+        --ink: #1c1c1c;
+        --muted: #4a5a63;
+        --accent: #ff8b3d;
+        --accent-2: #2c7a7b;
+        --card: #fff8ec;
+        --shadow: rgba(20, 20, 20, 0.12);
+        --radius: 18px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Trebuchet MS", "Segoe UI", Tahoma, sans-serif;
+        color: var(--ink);
+        min-height: 100vh;
+        background: radial-gradient(circle at top left, var(--bg-2), transparent 55%),
+          radial-gradient(circle at bottom right, #ffd9b3, transparent 60%), var(--bg-1);
+      }
+
+      .app {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 32px 20px 60px;
+      }
+
+      header {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 24px;
+      }
+
+      h1 {
+        font-size: 2.4rem;
+        margin: 0;
+        letter-spacing: 0.04em;
+      }
+
+      .subtitle {
+        color: var(--muted);
+        margin: 0;
+      }
+
+      .card {
+        background: var(--card);
+        border-radius: var(--radius);
+        padding: 20px;
+        box-shadow: 0 16px 40px var(--shadow);
+        margin-bottom: 18px;
+        animation: rise 0.5s ease;
+      }
+
+      .hidden {
+        display: none;
+      }
+
+      .invite-row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+
+      input[type="text"] {
+        flex: 1;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid #d7c9b5;
+        font-size: 1rem;
+      }
+
+      button {
+        border: none;
+        border-radius: 999px;
+        padding: 10px 18px;
+        font-weight: 600;
+        cursor: pointer;
+        background: var(--accent);
+        color: #1c1c1c;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 16px rgba(255, 139, 61, 0.3);
+      }
+
+      button.secondary {
+        background: var(--accent-2);
+        color: #fef8f0;
+      }
+
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+
+      .teams {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+        margin-top: 12px;
+      }
+
+      .team {
+        padding: 14px;
+        border-radius: 14px;
+        border: 1px solid rgba(44, 122, 123, 0.2);
+        background: #fdfbf5;
+      }
+
+      .team h3 {
+        margin: 0 0 6px;
+      }
+
+      .member-count {
+        color: var(--muted);
+        margin-bottom: 8px;
+        font-size: 0.95rem;
+      }
+
+      .member-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .member-list li {
+        padding: 6px 10px;
+        border-radius: 8px;
+        background: #f1efe8;
+      }
+
+      .status {
+        margin-top: 8px;
+        color: var(--muted);
+        min-height: 20px;
+      }
+
+      .team-buttons {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin: 10px 0 0;
+      }
+
+      @keyframes rise {
+        from {
+          transform: translateY(8px);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+
+      @media (max-width: 600px) {
+        h1 {
+          font-size: 2rem;
+        }
+
+        .invite-row {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <h1>Spot It Lobby</h1>
+        <p class="subtitle">Create a room, invite friends, and pick teams.</p>
+      </header>
+
+      <section id="host-view" class="card hidden">
+        <h2>Invite player</h2>
+        <p>Share this link with your friends.</p>
+        <div class="invite-row">
+          <input id="invite-link" type="text" readonly value="Waiting for room..." />
+          <button id="copy-link">Copy link</button>
+          <button id="start-game" class="secondary">Start game</button>
+        </div>
+        <div class="status" id="host-status"></div>
+      </section>
+
+      <section id="name-view" class="card hidden">
+        <h2>Select name</h2>
+        <p>Pick a display name before joining a team.</p>
+        <div class="invite-row">
+          <input id="name-input" type="text" placeholder="Your name" maxlength="32" />
+          <button id="name-submit">Continue</button>
+        </div>
+        <div class="status" id="name-status"></div>
+      </section>
+
+      <section id="team-view" class="card hidden">
+        <h2>Join team</h2>
+        <p>Choose a side. Everyone can see the live roster.</p>
+        <div class="team-buttons">
+          <button id="team-1">Team 1</button>
+          <button id="team-2" class="secondary">Team 2</button>
+        </div>
+        <div class="status" id="team-status"></div>
+      </section>
+
+      <section class="card" id="teams-section">
+        <h2>Teams</h2>
+        <div class="teams">
+          <div class="team">
+            <h3>Team 1</h3>
+            <div class="member-count" id="count-1">Member size 0</div>
+            <ul class="member-list" id="list-1"></ul>
+          </div>
+          <div class="team">
+            <h3>Team 2</h3>
+            <div class="member-count" id="count-2">Member size 0</div>
+            <ul class="member-list" id="list-2"></ul>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const roomParam = params.get("room");
+      const isHost = !roomParam;
+      let roomId = roomParam;
+      let joinAllowed = true;
+      let gameStarted = false;
+
+      const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
+      let ws;
+
+      const hostView = document.getElementById("host-view");
+      const nameView = document.getElementById("name-view");
+      const teamView = document.getElementById("team-view");
+      const inviteLink = document.getElementById("invite-link");
+      const copyLink = document.getElementById("copy-link");
+      const startGame = document.getElementById("start-game");
+      const nameInput = document.getElementById("name-input");
+      const nameSubmit = document.getElementById("name-submit");
+      const team1Btn = document.getElementById("team-1");
+      const team2Btn = document.getElementById("team-2");
+      const hostStatus = document.getElementById("host-status");
+      const nameStatus = document.getElementById("name-status");
+      const teamStatus = document.getElementById("team-status");
+      const count1 = document.getElementById("count-1");
+      const count2 = document.getElementById("count-2");
+      const list1 = document.getElementById("list-1");
+      const list2 = document.getElementById("list-2");
+
+      function setStatus(el, message) {
+        el.textContent = message || "";
+      }
+
+      function setButtonsDisabled(disabled) {
+        team1Btn.disabled = disabled;
+        team2Btn.disabled = disabled;
+        nameSubmit.disabled = disabled;
+        startGame.disabled = disabled;
+      }
+
+      function renderTeams(state) {
+        const teams = state.teams || { "1": [], "2": [] };
+        const countA = state.member_counts ? state.member_counts["1"] : teams["1"].length;
+        const countB = state.member_counts ? state.member_counts["2"] : teams["2"].length;
+        count1.textContent = `Member size ${countA}`;
+        count2.textContent = `Member size ${countB}`;
+        list1.innerHTML = "";
+        list2.innerHTML = "";
+        teams["1"].forEach((name) => {
+          const li = document.createElement("li");
+          li.textContent = name;
+          list1.appendChild(li);
+        });
+        teams["2"].forEach((name) => {
+          const li = document.createElement("li");
+          li.textContent = name;
+          list2.appendChild(li);
+        });
+      }
+
+      function connectWebSocket() {
+        ws = new WebSocket(`${wsProtocol}://${window.location.host}/ws`);
+
+        ws.addEventListener("open", () => {
+          if (isHost) {
+            ws.send(JSON.stringify({ type: "host_join", room_id: roomId }));
+          } else {
+            ws.send(JSON.stringify({ type: "join_room", room_id: roomId }));
+          }
+        });
+
+        ws.addEventListener("message", (event) => {
+          const msg = JSON.parse(event.data);
+          switch (msg.type) {
+            case "room_created": {
+              roomId = msg.room_id;
+              if (isHost) {
+                const link = `${window.location.origin}/?room=${roomId}`;
+                inviteLink.value = link;
+                setStatus(hostStatus, "Room ready. Share the link.");
+              }
+              break;
+            }
+            case "room_joined": {
+              setStatus(nameStatus, "Connected. Enter your name.");
+              break;
+            }
+            case "lobby_state": {
+              joinAllowed = msg.join_allowed;
+              gameStarted = msg.game_started;
+              renderTeams(msg);
+              if (!joinAllowed) {
+                setStatus(nameStatus, "Joining is closed.");
+                setStatus(teamStatus, "Joining is closed.");
+                setButtonsDisabled(true);
+              }
+              if (gameStarted) {
+                setStatus(teamStatus, "Game placeholder started.");
+                setButtonsDisabled(true);
+              }
+              break;
+            }
+            case "join_closed": {
+              joinAllowed = false;
+              setStatus(nameStatus, "Joining is closed.");
+              setStatus(teamStatus, "Joining is closed.");
+              setButtonsDisabled(true);
+              break;
+            }
+            case "game_started": {
+              gameStarted = true;
+              setStatus(teamStatus, msg.message || "Game started.");
+              setButtonsDisabled(true);
+              break;
+            }
+            case "status": {
+              setStatus(hostStatus, msg.message);
+              setStatus(teamStatus, msg.message);
+              break;
+            }
+            case "error": {
+              setStatus(nameStatus, msg.message);
+              setStatus(teamStatus, msg.message);
+              setStatus(hostStatus, msg.message);
+              break;
+            }
+            default:
+              break;
+          }
+        });
+
+        ws.addEventListener("close", () => {
+          setStatus(hostStatus, "Connection closed. Refresh to retry.");
+          setStatus(nameStatus, "Connection closed. Refresh to retry.");
+          setStatus(teamStatus, "Connection closed. Refresh to retry.");
+          setButtonsDisabled(true);
+        });
+
+        ws.addEventListener("error", () => {
+          setStatus(hostStatus, "Connection error. Refresh to retry.");
+          setStatus(nameStatus, "Connection error. Refresh to retry.");
+          setStatus(teamStatus, "Connection error. Refresh to retry.");
+        });
+      }
+
+      if (isHost) {
+        hostView.classList.remove("hidden");
+        setStatus(hostStatus, "Creating room...");
+        fetch("/create-room", { method: "POST" })
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error("Room creation failed.");
+            }
+            return response.json();
+          })
+          .then((data) => {
+            roomId = data.room_id;
+            const link = `${window.location.origin}/?room=${roomId}`;
+            inviteLink.value = link;
+            setStatus(hostStatus, "Room ready. Share the link.");
+            connectWebSocket();
+          })
+          .catch(() => {
+            setStatus(hostStatus, "Could not create a room. Refresh to retry.");
+            setButtonsDisabled(true);
+          });
+      } else {
+        nameView.classList.remove("hidden");
+        setStatus(nameStatus, "Connecting to server...");
+        connectWebSocket();
+      }
+
+      nameSubmit.addEventListener("click", () => {
+        const name = nameInput.value.trim();
+        if (!name) {
+          setStatus(nameStatus, "Name required.");
+          return;
+        }
+        ws.send(JSON.stringify({ type: "set_name", name }));
+        nameView.classList.add("hidden");
+        teamView.classList.remove("hidden");
+        setStatus(teamStatus, "Pick a team.");
+      });
+
+      team1Btn.addEventListener("click", () => {
+        ws.send(JSON.stringify({ type: "set_team", team: 1 }));
+        setStatus(teamStatus, "Joined Team 1.");
+      });
+
+      team2Btn.addEventListener("click", () => {
+        ws.send(JSON.stringify({ type: "set_team", team: 2 }));
+        setStatus(teamStatus, "Joined Team 2.");
+      });
+
+      startGame.addEventListener("click", () => {
+        ws.send(JSON.stringify({ type: "start_game" }));
+        setStatus(hostStatus, "Starting placeholder game...");
+      });
+
+      copyLink.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(inviteLink.value);
+          setStatus(hostStatus, "Link copied.");
+        } catch (err) {
+          setStatus(hostStatus, "Copy failed. Select the link manually.");
+        }
+      });
+    </script>
+  </body>
+</html>
