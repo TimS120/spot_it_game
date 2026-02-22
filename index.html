@@ -3,18 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Spot It Lobby</title>
+    <title>Spot It</title>
     <style>
       :root {
-        --bg-1: #f6f1e7;
-        --bg-2: #dfeef2;
-        --ink: #1c1c1c;
-        --muted: #4a5a63;
-        --accent: #ff8b3d;
-        --accent-2: #2c7a7b;
-        --card: #fff8ec;
-        --shadow: rgba(20, 20, 20, 0.12);
-        --radius: 18px;
+        --ink: #1d1a1a;
+        --muted: #575757;
+        --accent: #f97316;
+        --accent-dark: #c2410c;
+        --surface: #f8f3ea;
+        --panel: #fff9f1;
+        --shadow: rgba(24, 24, 24, 0.12);
+        --border: rgba(29, 26, 26, 0.15);
       }
 
       * {
@@ -23,63 +22,70 @@
 
       body {
         margin: 0;
+        min-height: 100vh;
         font-family: "Trebuchet MS", "Segoe UI", Tahoma, sans-serif;
         color: var(--ink);
-        min-height: 100vh;
-        background: radial-gradient(circle at top left, var(--bg-2), transparent 55%),
-          radial-gradient(circle at bottom right, #ffd9b3, transparent 60%), var(--bg-1);
+        background: radial-gradient(circle at 15% 15%, #f5d7c2, transparent 55%),
+          radial-gradient(circle at 85% 10%, #d8e9f0, transparent 60%),
+          radial-gradient(circle at 50% 90%, #f1cfa9, transparent 55%), var(--surface);
       }
 
       .app {
-        max-width: 960px;
+        max-width: 1100px;
         margin: 0 auto;
-        padding: 32px 20px 60px;
+        padding: 28px 20px 60px;
       }
 
       header {
         display: flex;
-        flex-direction: column;
-        gap: 8px;
-        margin-bottom: 24px;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 18px;
       }
 
       h1 {
-        font-size: 2.4rem;
         margin: 0;
+        font-size: 2.4rem;
         letter-spacing: 0.04em;
       }
 
       .subtitle {
-        color: var(--muted);
         margin: 0;
+        color: var(--muted);
       }
 
-      .card {
-        background: var(--card);
-        border-radius: var(--radius);
-        padding: 20px;
-        box-shadow: 0 16px 40px var(--shadow);
-        margin-bottom: 18px;
-        animation: rise 0.5s ease;
+      .panel {
+        background: var(--panel);
+        border-radius: 18px;
+        padding: 18px;
+        box-shadow: 0 16px 35px var(--shadow);
+        border: 1px solid rgba(255, 255, 255, 0.8);
+        margin-bottom: 16px;
       }
 
       .hidden {
-        display: none;
+        display: none !important;
       }
 
-      .invite-row {
+      .invite-row,
+      .form-row {
         display: flex;
         gap: 12px;
         flex-wrap: wrap;
-        margin-top: 12px;
+        align-items: center;
       }
 
-      input[type="text"] {
+      input[type="text"],
+      input[type="number"],
+      select {
         flex: 1;
+        min-width: 140px;
         padding: 10px 12px;
         border-radius: 10px;
-        border: 1px solid #d7c9b5;
+        border: 1px solid var(--border);
         font-size: 1rem;
+        background: #fff;
       }
 
       button {
@@ -89,18 +95,23 @@
         font-weight: 600;
         cursor: pointer;
         background: var(--accent);
-        color: #1c1c1c;
+        color: #1a1a1a;
         transition: transform 0.2s ease, box-shadow 0.2s ease;
       }
 
       button:hover {
         transform: translateY(-1px);
-        box-shadow: 0 8px 16px rgba(255, 139, 61, 0.3);
+        box-shadow: 0 8px 16px rgba(249, 115, 22, 0.3);
       }
 
       button.secondary {
-        background: var(--accent-2);
-        color: #fef8f0;
+        background: var(--accent-dark);
+        color: #fff7ed;
+      }
+
+      button.ghost {
+        background: transparent;
+        border: 1px solid var(--border);
       }
 
       button:disabled {
@@ -110,28 +121,142 @@
         box-shadow: none;
       }
 
-      .teams {
+      .status {
+        margin-top: 8px;
+        color: var(--muted);
+        min-height: 18px;
+      }
+
+      .palette {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+      }
+
+      .color-swatch {
+        width: 32px;
+        height: 32px;
+        border-radius: 999px;
+        border: 2px solid transparent;
+        cursor: pointer;
+      }
+
+      .color-swatch.selected {
+        border-color: #111;
+      }
+
+      .scores {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 12px;
+        margin: 12px 0 16px;
+      }
+
+      .score-card {
+        background: #fff;
+        padding: 14px;
+        border-radius: 14px;
+        border: 1px solid var(--border);
+        display: grid;
+        gap: 6px;
+        font-weight: 600;
+      }
+
+      .score-label {
+        color: var(--muted);
+      }
+
+      .score-value {
+        font-size: 1.6rem;
+        line-height: 1;
+      }
+
+      .question-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+
+      .question {
+        font-size: 1.1rem;
+      }
+
+      .timer {
+        font-weight: 700;
+        color: var(--accent-dark);
+      }
+
+      .board {
+        display: flex;
+        justify-content: center;
+        margin: 16px 0;
+      }
+
+      .board-frame {
+        width: min(80vw, 620px);
+        aspect-ratio: 1;
+        background: #000;
+        border-radius: 18px;
+        border: 2px dashed rgba(0, 0, 0, 0.12);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .board-frame img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        background: #000;
+      }
+
+      .board-fallback {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        text-align: center;
+        color: var(--muted);
+        background: repeating-linear-gradient(
+          45deg,
+          rgba(0, 0, 0, 0.04),
+          rgba(0, 0, 0, 0.04) 10px,
+          rgba(0, 0, 0, 0.02) 10px,
+          rgba(0, 0, 0, 0.02) 20px
+        );
+      }
+
+      canvas {
+        position: absolute;
+        inset: 0;
+      }
+
+      .rosters {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
         gap: 16px;
-        margin-top: 12px;
       }
 
-      .team {
-        padding: 14px;
+      .team-list {
+        background: #fff;
+        padding: 12px;
         border-radius: 14px;
-        border: 1px solid rgba(44, 122, 123, 0.2);
-        background: #fdfbf5;
+        border: 1px solid var(--border);
       }
 
-      .team h3 {
-        margin: 0 0 6px;
+      .team-list h3 {
+        margin: 0 0 8px;
       }
 
       .member-count {
         color: var(--muted);
         margin-bottom: 8px;
-        font-size: 0.95rem;
       }
 
       .member-list {
@@ -143,43 +268,43 @@
         gap: 6px;
       }
 
-      .member-list li {
-        padding: 6px 10px;
-        border-radius: 8px;
-        background: #f1efe8;
+      .member-chip {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: #f3f1ea;
+        border-radius: 10px;
+        padding: 6px 8px;
       }
 
-      .status {
-        margin-top: 8px;
-        color: var(--muted);
-        min-height: 20px;
+      .chip-color {
+        width: 12px;
+        height: 12px;
+        border-radius: 999px;
       }
 
-      .team-buttons {
+      .host-controls {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+
+      .control-row {
         display: flex;
         gap: 10px;
         flex-wrap: wrap;
-        margin: 10px 0 0;
+        align-items: center;
       }
 
-      @keyframes rise {
-        from {
-          transform: translateY(8px);
-          opacity: 0;
-        }
-        to {
-          transform: translateY(0);
-          opacity: 1;
-        }
-      }
-
-      @media (max-width: 600px) {
-        h1 {
-          font-size: 2rem;
-        }
-
-        .invite-row {
+      @media (max-width: 720px) {
+        header {
           flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .question-row {
+          flex-direction: column;
+          align-items: flex-start;
         }
       }
     </style>
@@ -187,50 +312,89 @@
   <body>
     <div class="app">
       <header>
-        <h1>Spot It Lobby</h1>
-        <p class="subtitle">Create a room, invite friends, and pick teams.</p>
+        <div>
+          <h1>Spot It</h1>
+          <p class="subtitle">Spot the detail, sync the team, score the point.</p>
+        </div>
       </header>
 
-      <section id="host-view" class="card hidden">
-        <h2>Invite player</h2>
-        <p>Share this link with your friends.</p>
+      <section id="host-panel" class="panel hidden">
+        <h2>Invite</h2>
         <div class="invite-row">
-          <input id="invite-link" type="text" readonly value="Waiting for room..." />
+          <input id="invite-link" type="text" readonly value="Creating room..." />
           <button id="copy-link">Copy link</button>
-          <button id="start-game" class="secondary">Start game</button>
         </div>
         <div class="status" id="host-status"></div>
       </section>
 
-      <section id="name-view" class="card hidden">
-        <h2>Select name</h2>
-        <p>Pick a display name before joining a team.</p>
-        <div class="invite-row">
+      <section id="setup-panel" class="panel hidden">
+        <h2>Join</h2>
+        <div class="form-row">
           <input id="name-input" type="text" placeholder="Your name" maxlength="32" />
-          <button id="name-submit">Continue</button>
         </div>
-        <div class="status" id="name-status"></div>
+        <div>
+          <p>Pick your color:</p>
+          <div class="palette" id="color-palette"></div>
+        </div>
+        <div>
+          <p>Select team:</p>
+          <div class="form-row">
+            <button id="team-1">Team 1</button>
+            <button id="team-2" class="secondary">Team 2</button>
+          </div>
+        </div>
+        <div class="status" id="player-status"></div>
       </section>
 
-      <section id="team-view" class="card hidden">
-        <h2>Join team</h2>
-        <p>Choose a side. Everyone can see the live roster.</p>
-        <div class="team-buttons">
-          <button id="team-1">Team 1</button>
-          <button id="team-2" class="secondary">Team 2</button>
+      <section id="game-panel" class="panel">
+        <div id="host-controls" class="host-controls hidden">
+          <div class="control-row">
+            <select id="round-type">
+              <option value="individual">Individual round</option>
+              <option value="leader">Leader round (later)</option>
+            </select>
+            <button id="start-round">Start next round</button>
+            <button id="restart-round" class="ghost">Restart round</button>
+          </div>
+          <div class="control-row">
+            <button id="reveal-question" class="secondary">Start question (60s)</button>
+          </div>
+          <div class="status" id="control-status"></div>
         </div>
-        <div class="status" id="team-status"></div>
-      </section>
 
-      <section class="card" id="teams-section">
-        <h2>Teams</h2>
-        <div class="teams">
-          <div class="team">
+        <div class="scores">
+          <div class="score-card">
+            <span class="score-label">Team 1 points:</span>
+            <span id="score-1" class="score-value">0</span>
+          </div>
+          <div class="score-card">
+            <span class="score-label">Team 2 points:</span>
+            <span id="score-2" class="score-value">0</span>
+          </div>
+        </div>
+
+        <div class="question-row">
+          <div class="question" id="question-text">Waiting for round...</div>
+          <div class="timer" id="timer-display"></div>
+        </div>
+
+        <div class="board">
+          <div class="board-frame" id="board-frame">
+            <img id="game-image" alt="Spot It round image" />
+            <div class="board-fallback" id="image-fallback">
+              Add round images to <code>static/images</code> (example: <code>1.png</code>).
+            </div>
+            <canvas id="overlay"></canvas>
+          </div>
+        </div>
+
+        <div class="rosters">
+          <div class="team-list">
             <h3>Team 1</h3>
             <div class="member-count" id="count-1">Member size 0</div>
             <ul class="member-list" id="list-1"></ul>
           </div>
-          <div class="team">
+          <div class="team-list">
             <h3>Team 2</h3>
             <div class="member-count" id="count-2">Member size 0</div>
             <ul class="member-list" id="list-2"></ul>
@@ -242,61 +406,283 @@
     <script>
       const params = new URLSearchParams(window.location.search);
       const roomParam = params.get("room");
-      const isHost = !roomParam;
+      const isLocalHost =
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1" ||
+        window.location.hostname === "[::1]";
+      const isHost = !roomParam && isLocalHost;
+      let hasHostPrivileges = false;
       let roomId = roomParam;
+      let playerId = null;
+      let playerTeam = null;
+      let playerColor = null;
       let joinAllowed = true;
-      let gameStarted = false;
+      let gameState = null;
+      let clickCache = new Map();
+      let timerInterval = null;
 
       const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
       let ws;
 
-      const hostView = document.getElementById("host-view");
-      const nameView = document.getElementById("name-view");
-      const teamView = document.getElementById("team-view");
+      const hostPanel = document.getElementById("host-panel");
+      const setupPanel = document.getElementById("setup-panel");
       const inviteLink = document.getElementById("invite-link");
       const copyLink = document.getElementById("copy-link");
-      const startGame = document.getElementById("start-game");
       const nameInput = document.getElementById("name-input");
-      const nameSubmit = document.getElementById("name-submit");
       const team1Btn = document.getElementById("team-1");
       const team2Btn = document.getElementById("team-2");
+      const palette = document.getElementById("color-palette");
       const hostStatus = document.getElementById("host-status");
-      const nameStatus = document.getElementById("name-status");
-      const teamStatus = document.getElementById("team-status");
+      const playerStatus = document.getElementById("player-status");
+      const controlStatus = document.getElementById("control-status");
+      const hostControls = document.getElementById("host-controls");
+      const roundType = document.getElementById("round-type");
+      const startRoundBtn = document.getElementById("start-round");
+      const restartRoundBtn = document.getElementById("restart-round");
+      const revealQuestionBtn = document.getElementById("reveal-question");
+      const score1 = document.getElementById("score-1");
+      const score2 = document.getElementById("score-2");
+      const questionText = document.getElementById("question-text");
+      const timerDisplay = document.getElementById("timer-display");
+      const gameImage = document.getElementById("game-image");
+      const imageFallback = document.getElementById("image-fallback");
+      const canvas = document.getElementById("overlay");
+      const boardFrame = document.getElementById("board-frame");
       const count1 = document.getElementById("count-1");
       const count2 = document.getElementById("count-2");
       const list1 = document.getElementById("list-1");
       const list2 = document.getElementById("list-2");
 
       function setStatus(el, message) {
-        el.textContent = message || "";
+        if (el) {
+          el.textContent = message || "";
+        }
       }
 
-      function setButtonsDisabled(disabled) {
+      function setSetupDisabled(disabled) {
+        nameInput.disabled = disabled;
         team1Btn.disabled = disabled;
         team2Btn.disabled = disabled;
-        nameSubmit.disabled = disabled;
-        startGame.disabled = disabled;
+        palette.querySelectorAll("button").forEach((btn) => (btn.disabled = disabled));
+      }
+
+      function renderPalette(colors, defaultColor) {
+        palette.innerHTML = "";
+        const preferredColor = defaultColor && colors.includes(defaultColor) ? defaultColor : colors[0];
+        playerColor = preferredColor || null;
+        colors.forEach((color) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "color-swatch";
+          btn.style.background = color;
+          btn.dataset.color = color;
+          if (color === playerColor) {
+            btn.classList.add("selected");
+          }
+          btn.addEventListener("click", () => {
+            playerColor = color;
+            ws.send(JSON.stringify({ type: "set_color", color }));
+            palette.querySelectorAll(".color-swatch").forEach((swatch) => swatch.classList.remove("selected"));
+            btn.classList.add("selected");
+          });
+          palette.appendChild(btn);
+        });
+        if (playerColor) {
+          ws.send(JSON.stringify({ type: "set_color", color: playerColor }));
+        }
       }
 
       function renderTeams(state) {
         const teams = state.teams || { "1": [], "2": [] };
-        const countA = state.member_counts ? state.member_counts["1"] : teams["1"].length;
-        const countB = state.member_counts ? state.member_counts["2"] : teams["2"].length;
-        count1.textContent = `Member size ${countA}`;
-        count2.textContent = `Member size ${countB}`;
+        if (playerId) {
+          const inTeam1 = teams["1"].some((player) => player.id === playerId);
+          const inTeam2 = teams["2"].some((player) => player.id === playerId);
+          if (inTeam1) {
+            playerTeam = 1;
+          } else if (inTeam2) {
+            playerTeam = 2;
+          }
+        }
+        count1.textContent = `Member size ${teams["1"].length}`;
+        count2.textContent = `Member size ${teams["2"].length}`;
         list1.innerHTML = "";
         list2.innerHTML = "";
-        teams["1"].forEach((name) => {
+        teams["1"].forEach((player) => {
           const li = document.createElement("li");
-          li.textContent = name;
+          li.className = "member-chip";
+          const dot = document.createElement("span");
+          dot.className = "chip-color";
+          dot.style.background = player.color || "#999";
+          const name = document.createElement("span");
+          name.textContent = player.name;
+          li.appendChild(dot);
+          li.appendChild(name);
           list1.appendChild(li);
         });
-        teams["2"].forEach((name) => {
+        teams["2"].forEach((player) => {
           const li = document.createElement("li");
-          li.textContent = name;
+          li.className = "member-chip";
+          const dot = document.createElement("span");
+          dot.className = "chip-color";
+          dot.style.background = player.color || "#999";
+          const name = document.createElement("span");
+          name.textContent = player.name;
+          li.appendChild(dot);
+          li.appendChild(name);
           list2.appendChild(li);
         });
+      }
+
+      function setGameImage(src) {
+        if (!src) {
+          gameImage.removeAttribute("src");
+          gameImage.classList.add("hidden");
+          imageFallback.classList.remove("hidden");
+          return;
+        }
+        let resolvedSrc = src;
+        if (!/^https?:\/\//i.test(resolvedSrc)) {
+          if (resolvedSrc.startsWith("/")) {
+            resolvedSrc = resolvedSrc;
+          } else if (resolvedSrc.startsWith("static/")) {
+            resolvedSrc = `/${resolvedSrc}`;
+          } else {
+            resolvedSrc = `/static/images/${resolvedSrc}`;
+          }
+        }
+
+        // Attach handlers before assigning src so cached/fast loads are handled reliably.
+        gameImage.onload = () => {
+          gameImage.classList.remove("hidden");
+          imageFallback.classList.add("hidden");
+        };
+        gameImage.onerror = () => {
+          gameImage.classList.add("hidden");
+          imageFallback.classList.remove("hidden");
+        };
+        // Keep image visible while loading so players do not remain on fallback due timing.
+        gameImage.classList.remove("hidden");
+        imageFallback.classList.add("hidden");
+        gameImage.src = resolvedSrc;
+
+        // If the image is already cached, onload may not fire again in some browsers.
+        if (gameImage.complete && gameImage.naturalWidth > 0) {
+          gameImage.classList.remove("hidden");
+          imageFallback.classList.add("hidden");
+        }
+      }
+
+      function updateTimer() {
+        if (!gameState || !gameState.timer_end) {
+          timerDisplay.textContent = "";
+          return;
+        }
+        const remaining = Math.max(0, gameState.timer_end - Date.now() / 1000);
+        timerDisplay.textContent = `Time: ${remaining.toFixed(1)}s`;
+      }
+
+      function startTimerTicker() {
+        if (timerInterval) {
+          clearInterval(timerInterval);
+        }
+        timerInterval = setInterval(() => {
+          updateTimer();
+          if (gameState && gameState.timer_end && Date.now() / 1000 >= gameState.timer_end) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+          }
+        }, 150);
+      }
+
+      function applyGameState(state) {
+        gameState = state;
+        if (!hasHostPrivileges && (state.phase === "image" || state.phase === "question" || state.phase === "reveal")) {
+          setupPanel.classList.add("hidden");
+        }
+        score1.textContent = state.scores ? state.scores["1"] : "0";
+        score2.textContent = state.scores ? state.scores["2"] : "0";
+        const activeTeam = state.active_team ? `Team ${state.active_team}` : "Team ?";
+        if (state.phase === "question") {
+          questionText.textContent = `(${activeTeam}) ${state.question}`;
+          updateTimer();
+          startTimerTicker();
+        } else if (state.phase === "image") {
+          questionText.textContent = state.question
+            ? `(${activeTeam}) Preview: ${state.question}`
+            : `(${activeTeam}) Waiting for round question...`;
+          timerDisplay.textContent = "";
+        } else if (state.phase === "reveal") {
+          questionText.textContent = `(${activeTeam}) Reveal`;
+          timerDisplay.textContent = "";
+        } else {
+          questionText.textContent = "Waiting for round...";
+          timerDisplay.textContent = "";
+        }
+
+        const imageSrc = state.phase === "reveal" && state.reveal_image ? state.reveal_image : state.image;
+        setGameImage(imageSrc);
+        clickCache.clear();
+        (state.clicks || []).forEach((click) => {
+          clickCache.set(click.player_id, click);
+        });
+        redrawCanvas();
+      }
+
+      function shouldShowAllClicks() {
+        if (!gameState) {
+          return false;
+        }
+        if (hasHostPrivileges) {
+          return true;
+        }
+        if (gameState.phase === "question") {
+          return true;
+        }
+        if (gameState.phase === "reveal") {
+          return true;
+        }
+        return false;
+      }
+
+      function redrawCanvas() {
+        const rect = boardFrame.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (!gameState) {
+          return;
+        }
+        const showAll = shouldShowAllClicks();
+        clickCache.forEach((click) => {
+          if (!showAll && click.player_id !== playerId) {
+            return;
+          }
+          drawCircle(ctx, click.x, click.y, 0.06, click.color || "#000");
+        });
+
+        if (gameState.phase === "reveal") {
+          if (gameState.centroid) {
+            drawCircle(ctx, gameState.centroid.x, gameState.centroid.y, gameState.team_radius || 0.06, "#1f6feb");
+          }
+          if (gameState.solution) {
+            drawCircle(ctx, gameState.solution.x, gameState.solution.y, gameState.solution.r || 0.06, "#ff0000");
+          }
+        }
+      }
+
+      function drawCircle(ctx, x, y, radius, color) {
+        const rect = boardFrame.getBoundingClientRect();
+        const r = radius * rect.width;
+        const cx = x * rect.width;
+        const cy = y * rect.height;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fillStyle = `${color}22`;
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = color;
+        ctx.stroke();
       }
 
       function connectWebSocket() {
@@ -305,8 +691,11 @@
         ws.addEventListener("open", () => {
           if (isHost) {
             ws.send(JSON.stringify({ type: "host_join", room_id: roomId }));
-          } else {
+          } else if (roomId) {
             ws.send(JSON.stringify({ type: "join_room", room_id: roomId }));
+          } else {
+            setStatus(playerStatus, "Missing room id in invite link.");
+            setStatus(controlStatus, "Missing room id in invite link.");
           }
         });
 
@@ -315,53 +704,49 @@
           switch (msg.type) {
             case "room_created": {
               roomId = msg.room_id;
-              if (isHost) {
-                const link = `${window.location.origin}/?room=${roomId}`;
+              if (msg.role === "host" && isHost) {
+                hasHostPrivileges = true;
+                hostControls.classList.remove("hidden");
+                const link = msg.invite_url || `${window.location.origin}/?room=${roomId}`;
                 inviteLink.value = link;
                 setStatus(hostStatus, "Room ready. Share the link.");
               }
               break;
             }
             case "room_joined": {
-              setStatus(nameStatus, "Connected. Enter your name.");
+              hasHostPrivileges = false;
+              hostControls.classList.add("hidden");
+              playerId = msg.player_id;
+              renderPalette(msg.colors || [], msg.default_color);
+              setStatus(playerStatus, "Type your name, optionally change color, then pick a team.");
               break;
             }
             case "lobby_state": {
               joinAllowed = msg.join_allowed;
-              gameStarted = msg.game_started;
               renderTeams(msg);
               if (!joinAllowed) {
-                setStatus(nameStatus, "Joining is closed.");
-                setStatus(teamStatus, "Joining is closed.");
-                setButtonsDisabled(true);
-              }
-              if (gameStarted) {
-                setStatus(teamStatus, "Game placeholder started.");
-                setButtonsDisabled(true);
+                setSetupDisabled(true);
+                setStatus(playerStatus, "Joining is closed.");
               }
               break;
             }
-            case "join_closed": {
-              joinAllowed = false;
-              setStatus(nameStatus, "Joining is closed.");
-              setStatus(teamStatus, "Joining is closed.");
-              setButtonsDisabled(true);
+            case "game_state": {
+              applyGameState(msg);
               break;
             }
-            case "game_started": {
-              gameStarted = true;
-              setStatus(teamStatus, msg.message || "Game started.");
-              setButtonsDisabled(true);
+            case "click_update": {
+              clickCache.set(msg.player_id, msg);
+              redrawCanvas();
               break;
             }
             case "status": {
-              setStatus(hostStatus, msg.message);
-              setStatus(teamStatus, msg.message);
+              setStatus(controlStatus, msg.message);
+              setStatus(playerStatus, msg.message);
               break;
             }
             case "error": {
-              setStatus(nameStatus, msg.message);
-              setStatus(teamStatus, msg.message);
+              setStatus(controlStatus, msg.message);
+              setStatus(playerStatus, msg.message);
               setStatus(hostStatus, msg.message);
               break;
             }
@@ -372,20 +757,15 @@
 
         ws.addEventListener("close", () => {
           setStatus(hostStatus, "Connection closed. Refresh to retry.");
-          setStatus(nameStatus, "Connection closed. Refresh to retry.");
-          setStatus(teamStatus, "Connection closed. Refresh to retry.");
-          setButtonsDisabled(true);
-        });
-
-        ws.addEventListener("error", () => {
-          setStatus(hostStatus, "Connection error. Refresh to retry.");
-          setStatus(nameStatus, "Connection error. Refresh to retry.");
-          setStatus(teamStatus, "Connection error. Refresh to retry.");
+          setStatus(playerStatus, "Connection closed. Refresh to retry.");
+          setStatus(controlStatus, "Connection closed. Refresh to retry.");
+          setSetupDisabled(true);
         });
       }
 
-      if (isHost) {
-        hostView.classList.remove("hidden");
+      function bootstrapHost() {
+        hostPanel.classList.remove("hidden");
+        hostControls.classList.add("hidden");
         setStatus(hostStatus, "Creating room...");
         fetch("/create-room", { method: "POST" })
           .then((response) => {
@@ -396,46 +776,63 @@
           })
           .then((data) => {
             roomId = data.room_id;
-            const link = `${window.location.origin}/?room=${roomId}`;
-            inviteLink.value = link;
+            inviteLink.value = data.invite_url || `${window.location.origin}/?room=${roomId}`;
             setStatus(hostStatus, "Room ready. Share the link.");
             connectWebSocket();
           })
           .catch(() => {
             setStatus(hostStatus, "Could not create a room. Refresh to retry.");
-            setButtonsDisabled(true);
           });
-      } else {
-        nameView.classList.remove("hidden");
-        setStatus(nameStatus, "Connecting to server...");
+      }
+
+      function bootstrapPlayer() {
+        setupPanel.classList.remove("hidden");
+        hostControls.classList.add("hidden");
+        if (!roomId) {
+          setStatus(playerStatus, "Open the full invite link from the host (must include ?room=...).");
+          setSetupDisabled(true);
+          return;
+        }
+        setStatus(playerStatus, "Connecting...");
         connectWebSocket();
       }
 
-      nameSubmit.addEventListener("click", () => {
+      team1Btn.addEventListener("click", () => {
         const name = nameInput.value.trim();
         if (!name) {
-          setStatus(nameStatus, "Name required.");
+          setStatus(playerStatus, "Name required.");
           return;
         }
-        ws.send(JSON.stringify({ type: "set_name", name }));
-        nameView.classList.add("hidden");
-        teamView.classList.remove("hidden");
-        setStatus(teamStatus, "Pick a team.");
-      });
-
-      team1Btn.addEventListener("click", () => {
-        ws.send(JSON.stringify({ type: "set_team", team: 1 }));
-        setStatus(teamStatus, "Joined Team 1.");
+        playerTeam = 1;
+        ws.send(JSON.stringify({ type: "set_team", team: 1, name }));
+        setStatus(playerStatus, "Joined Team 1.");
       });
 
       team2Btn.addEventListener("click", () => {
-        ws.send(JSON.stringify({ type: "set_team", team: 2 }));
-        setStatus(teamStatus, "Joined Team 2.");
+        const name = nameInput.value.trim();
+        if (!name) {
+          setStatus(playerStatus, "Name required.");
+          return;
+        }
+        playerTeam = 2;
+        ws.send(JSON.stringify({ type: "set_team", team: 2, name }));
+        setStatus(playerStatus, "Joined Team 2.");
       });
 
-      startGame.addEventListener("click", () => {
-        ws.send(JSON.stringify({ type: "start_game" }));
-        setStatus(hostStatus, "Starting placeholder game...");
+      startRoundBtn.addEventListener("click", () => {
+        if (!hasHostPrivileges) return;
+        ws.send(JSON.stringify({ type: "start_round", round_type: roundType.value }));
+        setStatus(controlStatus, "Starting round...");
+      });
+
+      restartRoundBtn.addEventListener("click", () => {
+        if (!hasHostPrivileges) return;
+        ws.send(JSON.stringify({ type: "restart_round" }));
+      });
+
+      revealQuestionBtn.addEventListener("click", () => {
+        if (!hasHostPrivileges) return;
+        ws.send(JSON.stringify({ type: "reveal_question" }));
       });
 
       copyLink.addEventListener("click", async () => {
@@ -446,6 +843,29 @@
           setStatus(hostStatus, "Copy failed. Select the link manually.");
         }
       });
+
+      boardFrame.addEventListener("click", (event) => {
+        if (!gameState || gameState.phase !== "question") {
+          return;
+        }
+        if (hasHostPrivileges) {
+          return;
+        }
+        const rect = boardFrame.getBoundingClientRect();
+        const x = (event.clientX - rect.left) / rect.width;
+        const y = (event.clientY - rect.top) / rect.height;
+        ws.send(JSON.stringify({ type: "click", x, y }));
+      });
+
+      window.addEventListener("resize", () => {
+        redrawCanvas();
+      });
+
+      if (isHost) {
+        bootstrapHost();
+      } else {
+        bootstrapPlayer();
+      }
     </script>
   </body>
 </html>

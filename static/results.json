@@ -1,0 +1,7 @@
+[
+  {
+    "question": "Find the hidden star",
+    "image": "1.png",
+    "solution": { "x": 0.5, "y": 0.5, "r": 0.08 }
+  }
+]
