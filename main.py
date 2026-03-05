@@ -248,6 +248,7 @@ def _new_room() -> Dict[str, Any]:
         "team_radius": 0.06,
         "round_data": None,
         "timer_task": None,
+        "leader_id": None,
     }
 
 
@@ -418,6 +419,21 @@ def _team_radius_for_solution(solution: Optional[Dict[str, Any]]) -> float:
     return 0.06
 
 
+def _normalize_round_type(raw_value: Any) -> Optional[str]:
+    if not isinstance(raw_value, str):
+        return None
+    value = raw_value.strip().lower()
+    if value == "individual":
+        return "individual_seeing"
+    if value in ("individual_blind", "blind", "individual-blind"):
+        return "individual_blind"
+    if value in ("individual_seeing", "seeing", "individual-seeing"):
+        return "individual_seeing"
+    if value == "leader":
+        return "leader"
+    return None
+
+
 def _solution_overlap(team_center: Tuple[float, float], team_radius: float, solution: Dict[str, Any]) -> bool:
     dx = team_center[0] - solution["x"]
     dy = team_center[1] - solution["y"]
@@ -457,6 +473,8 @@ def _game_snapshot(room: Dict[str, Any]) -> Dict[str, Any]:
             }
         )
     round_data = room.get("round_data") or {}
+    leader_id = room.get("leader_id")
+    leader = _find_player_by_id(room, leader_id) if isinstance(leader_id, str) else None
     return {
         "round_index": room["round_index"],
         "round_type": room["round_type"],
@@ -471,6 +489,8 @@ def _game_snapshot(room: Dict[str, Any]) -> Dict[str, Any]:
         "centroid": room["centroid"],
         "solution": room["solution"],
         "team_radius": room["team_radius"],
+        "leader_id": leader_id,
+        "leader_name": leader.get("name") if leader else None,
     }
 
 
@@ -697,12 +717,15 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                     continue
 
                 if msg_type == "start_round":
-                    round_type = msg.get("round_type")
-                    if round_type not in ("individual", "leader"):
-                        await _safe_send(ws, {"type": "error", "message": "Round type must be individual or leader."})
-                        continue
-                    if round_type == "leader":
-                        await _safe_send(ws, {"type": "error", "message": "Leader round not implemented yet."})
+                    round_type = _normalize_round_type(msg.get("round_type"))
+                    if round_type not in ("individual_blind", "individual_seeing", "leader"):
+                        await _safe_send(
+                            ws,
+                            {
+                                "type": "error",
+                                "message": "Round type must be individual_blind, individual_seeing, or leader.",
+                            },
+                        )
                         continue
                     async with rooms_lock:
                         room = rooms.get(room_id)
@@ -726,6 +749,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                         room["solution"] = data.get("solution")
                         room["team_radius"] = _team_radius_for_solution(room["solution"])
                         room["active_team"] = 1 if room["round_index"] % 2 == 1 else 2
+                        room["leader_id"] = None
                         room["join_allowed"] = False
                         room["game_started"] = True
                         room["last_activity"] = _now()
@@ -737,6 +761,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                     continue
 
                 if msg_type == "reveal_question":
+                    round_type = _normalize_round_type(msg.get("round_type"))
                     async with rooms_lock:
                         room = rooms.get(room_id)
                         if not room:
@@ -745,6 +770,9 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                         if room["phase"] != "image":
                             await _safe_send(ws, {"type": "error", "message": "Round not ready for question."})
                             continue
+                        if round_type in ("individual_blind", "individual_seeing", "leader"):
+                            room["round_type"] = round_type
+                            room["leader_id"] = None
                         room["phase"] = "question"
                         room["timer_end"] = _now() + ROUND_DURATION_SECONDS
                         room["last_activity"] = _now()
@@ -755,6 +783,19 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                     continue
 
                 if msg_type == "restart_round":
+                    round_type = _normalize_round_type(msg.get("round_type"))
+                    if round_type is None:
+                        # Backward-compatible fallback for older host clients that do not send round_type on restart.
+                        round_type = "individual_seeing"
+                    if round_type is not None and round_type not in ("individual_blind", "individual_seeing", "leader"):
+                        await _safe_send(
+                            ws,
+                            {
+                                "type": "error",
+                                "message": "Round type must be individual_blind, individual_seeing, or leader.",
+                            },
+                        )
+                        continue
                     async with rooms_lock:
                         room = rooms.get(room_id)
                         if not room:
@@ -765,10 +806,13 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                             continue
                         _cancel_timer(room)
                         room["phase"] = "image"
+                        if round_type is not None:
+                            room["round_type"] = round_type
                         round_data = room.get("round_data") or {}
                         room["question"] = str(round_data.get("question", "")).strip()[:200]
                         room["timer_end"] = None
                         room["clicks"] = {}
+                        room["leader_id"] = None
                         room["centroid"] = None
                         room["last_activity"] = _now()
                         game_snapshot = _game_snapshot(room)
@@ -887,8 +931,19 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                         if player.get("team") != room["active_team"]:
                             await _safe_send(ws, {"type": "error", "message": "Not your team's turn."})
                             continue
-                        room["clicks"][player["id"]] = {"x": float(x), "y": float(y)}
+                        if room.get("round_type") == "leader":
+                            leader_id = room.get("leader_id")
+                            if leader_id is None:
+                                room["leader_id"] = player["id"]
+                            elif leader_id != player["id"]:
+                                await _safe_send(ws, {"type": "error", "message": "Only the team leader can click in this round."})
+                                continue
+                            room["clicks"] = {room["leader_id"]: {"x": float(x), "y": float(y)}}
+                        else:
+                            room["clicks"][player["id"]] = {"x": float(x), "y": float(y)}
                         room["last_activity"] = _now()
+                        leader_id = room.get("leader_id")
+                        leader = _find_player_by_id(room, leader_id) if isinstance(leader_id, str) else None
                         click_message = {
                             "type": "click_update",
                             "player_id": player["id"],
@@ -896,6 +951,8 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                             "y": float(y),
                             "team": player.get("team"),
                             "color": player.get("color"),
+                            "leader_id": leader_id,
+                            "leader_name": leader.get("name") if leader else None,
                         }
                     await _broadcast(room, click_message)
                     continue
@@ -917,10 +974,14 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                         await _broadcast(room, {"type": "status", "message": "Host disconnected. Room closed."})
                         rooms.pop(room_id, None)
                     else:
+                        leaving_player = _find_player(room, ws)
+                        leaving_player_id = leaving_player["id"] if leaving_player else None
                         room["players"] = [player for player in room["players"] if player["ws"] is not ws]
                         for player_id, click in list(room["clicks"].items()):
                             if not _find_player_by_id(room, player_id):
                                 room["clicks"].pop(player_id, None)
+                        if leaving_player_id and room.get("leader_id") == leaving_player_id:
+                            room["leader_id"] = None
                         room["last_activity"] = _now()
                         snapshot = _room_snapshot(room)
                         await _broadcast(room, {"type": "lobby_state", **snapshot})

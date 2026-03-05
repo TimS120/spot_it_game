@@ -350,8 +350,9 @@
         <div id="host-controls" class="host-controls hidden">
           <div class="control-row">
             <select id="round-type">
-              <option value="individual">Individual round</option>
-              <option value="leader">Leader round (later)</option>
+              <option value="individual_blind">Individual round (blind)</option>
+              <option value="individual_seeing">Individual round (seeing)</option>
+              <option value="leader">Leader round</option>
             </select>
             <button id="start-round">Start next round</button>
             <button id="restart-round" class="ghost">Restart round</button>
@@ -602,14 +603,24 @@
         score1.textContent = state.scores ? state.scores["1"] : "0";
         score2.textContent = state.scores ? state.scores["2"] : "0";
         const activeTeam = state.active_team ? `Team ${state.active_team}` : "Team ?";
+        const isLeaderRound = state.round_type === "leader";
+        const leaderLabel = state.leader_name ? `Leader: ${state.leader_name}` : "Leader: first click";
         if (state.phase === "question") {
-          questionText.textContent = `(${activeTeam}) ${state.question}`;
+          questionText.textContent = isLeaderRound
+            ? `(${activeTeam} · ${leaderLabel}) ${state.question}`
+            : `(${activeTeam}) ${state.question}`;
           updateTimer();
           startTimerTicker();
         } else if (state.phase === "image") {
-          questionText.textContent = state.question
-            ? `(${activeTeam}) Preview: ${state.question}`
-            : `(${activeTeam}) Waiting for round question...`;
+          if (hasHostPrivileges) {
+            questionText.textContent = state.question
+              ? isLeaderRound
+                ? `(${activeTeam} · ${leaderLabel}) Preview: ${state.question}`
+                : `(${activeTeam}) Preview: ${state.question}`
+              : `(${activeTeam}) Waiting for round question...`;
+          } else {
+            questionText.textContent = `(${activeTeam}) Image shown. Question will appear when timer starts.`;
+          }
           timerDisplay.textContent = "";
         } else if (state.phase === "reveal") {
           questionText.textContent = `(${activeTeam}) Reveal`;
@@ -625,23 +636,38 @@
         (state.clicks || []).forEach((click) => {
           clickCache.set(click.player_id, click);
         });
+        if (!hasHostPrivileges && state.phase === "question" && isLeaderRound) {
+          if (playerTeam !== state.active_team) {
+            setStatus(playerStatus, "Other team is currently playing.");
+          } else if (!state.leader_id) {
+            setStatus(playerStatus, "First click from your team becomes leader.");
+          } else if (state.leader_id === playerId) {
+            setStatus(playerStatus, "You are the leader. Place the circle.");
+          } else {
+            setStatus(playerStatus, "Your team leader is placing the circle.");
+          }
+        }
         redrawCanvas();
       }
 
-      function shouldShowAllClicks() {
+      function shouldRenderClick(click) {
         if (!gameState) {
           return false;
         }
         if (hasHostPrivileges) {
           return true;
         }
+        const isOwnClick = click.player_id === playerId;
         if (gameState.phase === "question") {
+          if (gameState.round_type === "individual_blind") {
+            return isOwnClick;
+          }
           return true;
         }
         if (gameState.phase === "reveal") {
           return true;
         }
-        return false;
+        return isOwnClick;
       }
 
       function redrawCanvas() {
@@ -653,9 +679,8 @@
         if (!gameState) {
           return;
         }
-        const showAll = shouldShowAllClicks();
         clickCache.forEach((click) => {
-          if (!showAll && click.player_id !== playerId) {
+          if (!shouldRenderClick(click)) {
             return;
           }
           drawCircle(ctx, click.x, click.y, 0.06, click.color || "#000");
@@ -736,6 +761,17 @@
             }
             case "click_update": {
               clickCache.set(msg.player_id, msg);
+              if (gameState && gameState.round_type === "leader") {
+                gameState.leader_id = msg.leader_id || gameState.leader_id;
+                gameState.leader_name = msg.leader_name || gameState.leader_name;
+                if (!hasHostPrivileges && gameState.phase === "question") {
+                  if (playerTeam === gameState.active_team && gameState.leader_id === playerId) {
+                    setStatus(playerStatus, "You are the leader. Place the circle.");
+                  } else if (playerTeam === gameState.active_team && gameState.leader_id && gameState.leader_id !== playerId) {
+                    setStatus(playerStatus, "Your team leader is placing the circle.");
+                  }
+                }
+              }
               redrawCanvas();
               break;
             }
@@ -827,12 +863,12 @@
 
       restartRoundBtn.addEventListener("click", () => {
         if (!hasHostPrivileges) return;
-        ws.send(JSON.stringify({ type: "restart_round" }));
+        ws.send(JSON.stringify({ type: "restart_round", round_type: roundType.value }));
       });
 
       revealQuestionBtn.addEventListener("click", () => {
         if (!hasHostPrivileges) return;
-        ws.send(JSON.stringify({ type: "reveal_question" }));
+        ws.send(JSON.stringify({ type: "reveal_question", round_type: roundType.value }));
       });
 
       copyLink.addEventListener("click", async () => {
@@ -850,6 +886,16 @@
         }
         if (hasHostPrivileges) {
           return;
+        }
+        if (gameState.round_type === "leader") {
+          if (playerTeam !== gameState.active_team) {
+            setStatus(playerStatus, "Not your team's turn.");
+            return;
+          }
+          if (gameState.leader_id && gameState.leader_id !== playerId) {
+            setStatus(playerStatus, "Only your team leader can place the circle.");
+            return;
+          }
         }
         const rect = boardFrame.getBoundingClientRect();
         const x = (event.clientX - rect.left) / rect.width;
