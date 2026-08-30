@@ -14,11 +14,8 @@ from typing import Any, Deque, Dict, List, Optional, Tuple
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-try:
-    from PIL import Image, UnidentifiedImageError
-except ImportError:
-    Image = None
-    UnidentifiedImageError = Exception
+from PIL import Image, UnidentifiedImageError
+
 
 
 @asynccontextmanager
@@ -668,9 +665,6 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                         if not room:
                             await _safe_send(ws, {"type": "error", "message": "Room not found."})
                             continue
-                        if not room["join_allowed"]:
-                            await _safe_send(ws, {"type": "error", "message": "Joining is closed."})
-                            continue
                         default_color = DEFAULT_COLORS[len(room["players"]) % len(DEFAULT_COLORS)]
                         player = _new_player(ws, default_color=default_color)
                         room["players"].append(player)
@@ -707,13 +701,12 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                         if not room:
                             await _safe_send(ws, {"type": "error", "message": "Room no longer exists."})
                             continue
-                        room["join_allowed"] = False
+                        room["join_allowed"] = True
                         room["game_started"] = True
                         room["last_activity"] = _now()
                         snapshot = _room_snapshot(room)
-                    await _broadcast(room, {"type": "join_closed"})
                     await _broadcast(room, {"type": "lobby_state", **snapshot})
-                    await _broadcast(room, {"type": "status", "message": "Joining closed."})
+                    await _broadcast(room, {"type": "status", "message": "Game started. Players can still join."})
                     continue
 
                 if msg_type == "start_round":
@@ -750,14 +743,70 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                         room["team_radius"] = _team_radius_for_solution(room["solution"])
                         room["active_team"] = 1 if room["round_index"] % 2 == 1 else 2
                         room["leader_id"] = None
-                        room["join_allowed"] = False
+                        room["join_allowed"] = True
                         room["game_started"] = True
                         room["last_activity"] = _now()
                         snapshot = _room_snapshot(room)
                         game_snapshot = _game_snapshot(room)
-                    await _broadcast(room, {"type": "join_closed"})
                     await _broadcast(room, {"type": "lobby_state", **snapshot})
                     await _broadcast(room, {"type": "game_state", **game_snapshot})
+                    continue
+
+                if msg_type == "move_player":
+                    player_id = msg.get("player_id")
+                    team = msg.get("team")
+                    if not isinstance(player_id, str) or team not in (1, 2):
+                        await _safe_send(ws, {"type": "error", "message": "Player and destination team are required."})
+                        continue
+                    async with rooms_lock:
+                        room = rooms.get(room_id)
+                        if not room:
+                            await _safe_send(ws, {"type": "error", "message": "Room no longer exists."})
+                            continue
+                        player = _find_player_by_id(room, player_id)
+                        if not player:
+                            await _safe_send(ws, {"type": "error", "message": "Player is no longer connected."})
+                            continue
+                        player["team"] = team
+                        # A moved player must not retain a click or leader role from their old team.
+                        room["clicks"].pop(player_id, None)
+                        if room.get("leader_id") == player_id:
+                            room["leader_id"] = None
+                        room["last_activity"] = _now()
+                        snapshot = _room_snapshot(room)
+                        game_snapshot = _game_snapshot(room)
+                    await _broadcast(room, {"type": "lobby_state", **snapshot})
+                    await _broadcast(room, {"type": "game_state", **game_snapshot})
+                    continue
+
+                if msg_type == "reset_game":
+                    async with rooms_lock:
+                        room = rooms.get(room_id)
+                        if not room:
+                            await _safe_send(ws, {"type": "error", "message": "Room no longer exists."})
+                            continue
+                        _cancel_timer(room)
+                        room["join_allowed"] = True
+                        room["game_started"] = False
+                        room["round_index"] = 0
+                        room["round_type"] = None
+                        room["phase"] = "idle"
+                        room["active_team"] = 1
+                        room["question"] = ""
+                        room["timer_end"] = None
+                        room["clicks"] = {}
+                        room["scores"] = {1: 0, 2: 0}
+                        room["centroid"] = None
+                        room["solution"] = None
+                        room["team_radius"] = 0.06
+                        room["round_data"] = None
+                        room["leader_id"] = None
+                        room["last_activity"] = _now()
+                        snapshot = _room_snapshot(room)
+                        game_snapshot = _game_snapshot(room)
+                    await _broadcast(room, {"type": "lobby_state", **snapshot})
+                    await _broadcast(room, {"type": "game_state", **game_snapshot})
+                    await _broadcast(room, {"type": "status", "message": "Game reset. Teams have been kept."})
                     continue
 
                 if msg_type == "reveal_question":
@@ -821,7 +870,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
 
                 await _safe_send(
                     ws,
-                    {"type": "error", "message": "Host can only start_game, start_round, reveal_question, restart_round."},
+                    {"type": "error", "message": "Host can only start_game, start_round, reveal_question, restart_round, move_player, or reset_game."},
                 )
                 continue
 
@@ -837,12 +886,12 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                         if not room:
                             await _safe_send(ws, {"type": "error", "message": "Room no longer exists."})
                             continue
-                        if not room["join_allowed"]:
-                            await _safe_send(ws, {"type": "error", "message": "Joining is closed."})
-                            continue
                         player = _find_player(room, ws)
                         if not player:
                             await _safe_send(ws, {"type": "error", "message": "Player not registered."})
+                            continue
+                        if room["game_started"] and player.get("team") is not None:
+                            await _safe_send(ws, {"type": "error", "message": "Your player details are locked after the game has started."})
                             continue
                         player["name"] = name
                         room["last_activity"] = _now()
@@ -863,12 +912,12 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                         if not room:
                             await _safe_send(ws, {"type": "error", "message": "Room no longer exists."})
                             continue
-                        if not room["join_allowed"]:
-                            await _safe_send(ws, {"type": "error", "message": "Joining is closed."})
-                            continue
                         player = _find_player(room, ws)
                         if not player:
                             await _safe_send(ws, {"type": "error", "message": "Player not registered."})
+                            continue
+                        if room["game_started"] and player.get("team") is not None:
+                            await _safe_send(ws, {"type": "error", "message": "Your player details are locked after the game has started."})
                             continue
                         player["color"] = color
                         room["last_activity"] = _now()
@@ -887,12 +936,12 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                         if not room:
                             await _safe_send(ws, {"type": "error", "message": "Room no longer exists."})
                             continue
-                        if not room["join_allowed"]:
-                            await _safe_send(ws, {"type": "error", "message": "Joining is closed."})
-                            continue
                         player = _find_player(room, ws)
                         if not player:
                             await _safe_send(ws, {"type": "error", "message": "Player not registered."})
+                            continue
+                        if room["game_started"] and player.get("team") is not None:
+                            await _safe_send(ws, {"type": "error", "message": "Only the host can change teams after the game has started."})
                             continue
                         if isinstance(name, str) and name.strip():
                             player["name"] = name.strip()[:32]

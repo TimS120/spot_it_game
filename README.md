@@ -9,14 +9,14 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 2) Open `http://localhost:8000` in your browser.
 3) A room is created automatically and the invite link is shown on the page.
 4) The server console also prints the invite link when the room is created.
-5) Use the host controls to start a round and start the fixed 60s question timer.
+5) Use **Start game** to lock assigned players' names, colors, and teams without starting a round. The roster includes controls to move any player between teams, before or during a game. The host can reset the game at any time; this clears scores and round progress but keeps the teams.
 
 ## Player flow
 1) Open the invite link.
 2) Enter a name.
 3) Pick a color.
 4) Click Team 1 or Team 2.
-5) During the round, click once on the image to place your circle.
+5) Players can join at any point, including while a round is in progress. During the round, click once on the image to place your circle.
 
 ## Assets (required)
 - Add round images under `static/images`:

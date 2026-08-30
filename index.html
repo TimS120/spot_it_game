@@ -254,6 +254,19 @@
         margin: 0 0 8px;
       }
 
+      .move-player {
+        margin-left: auto;
+        padding: 0.2rem 0.45rem;
+        font-size: 0.75rem;
+      }
+
+      .player-profile {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+      }
+
       .member-count {
         color: var(--muted);
         margin-bottom: 8px;
@@ -328,27 +341,31 @@
       </section>
 
       <section id="setup-panel" class="panel hidden">
-        <h2>Join</h2>
-        <div class="form-row">
-          <input id="name-input" type="text" placeholder="Your name" maxlength="32" />
-        </div>
-        <div>
-          <p>Pick your color:</p>
-          <div class="palette" id="color-palette"></div>
-        </div>
-        <div>
-          <p>Select team:</p>
+        <h2 id="setup-title">Join</h2>
+        <div id="join-options">
           <div class="form-row">
-            <button id="team-1">Team 1</button>
-            <button id="team-2" class="secondary">Team 2</button>
+            <input id="name-input" type="text" placeholder="Your name" maxlength="32" />
+          </div>
+          <div>
+            <p>Pick your color:</p>
+            <div class="palette" id="color-palette"></div>
+          </div>
+          <div>
+            <p>Select team:</p>
+            <div class="form-row">
+              <button id="team-1">Team 1</button>
+              <button id="team-2" class="secondary">Team 2</button>
+            </div>
           </div>
         </div>
+        <div id="player-profile" class="player-profile hidden"></div>
         <div class="status" id="player-status"></div>
       </section>
 
       <section id="game-panel" class="panel">
         <div id="host-controls" class="host-controls hidden">
           <div class="control-row">
+            <button id="start-game">Start game</button>
             <select id="round-type">
               <option value="individual_blind">Individual round (blind)</option>
               <option value="individual_seeing">Individual round (seeing)</option>
@@ -359,6 +376,7 @@
           </div>
           <div class="control-row">
             <button id="reveal-question" class="secondary">Start question (60s)</button>
+            <button id="reset-game" class="ghost">Reset game</button>
           </div>
           <div class="status" id="control-status"></div>
         </div>
@@ -417,7 +435,6 @@
       let playerId = null;
       let playerTeam = null;
       let playerColor = null;
-      let joinAllowed = true;
       let gameState = null;
       let clickCache = new Map();
       let timerInterval = null;
@@ -427,6 +444,9 @@
 
       const hostPanel = document.getElementById("host-panel");
       const setupPanel = document.getElementById("setup-panel");
+      const setupTitle = document.getElementById("setup-title");
+      const joinOptions = document.getElementById("join-options");
+      const playerProfile = document.getElementById("player-profile");
       const inviteLink = document.getElementById("invite-link");
       const copyLink = document.getElementById("copy-link");
       const nameInput = document.getElementById("name-input");
@@ -438,9 +458,11 @@
       const controlStatus = document.getElementById("control-status");
       const hostControls = document.getElementById("host-controls");
       const roundType = document.getElementById("round-type");
+      const startGameBtn = document.getElementById("start-game");
       const startRoundBtn = document.getElementById("start-round");
       const restartRoundBtn = document.getElementById("restart-round");
       const revealQuestionBtn = document.getElementById("reveal-question");
+      const resetGameBtn = document.getElementById("reset-game");
       const score1 = document.getElementById("score-1");
       const score2 = document.getElementById("score-2");
       const questionText = document.getElementById("question-text");
@@ -493,17 +515,39 @@
         }
       }
 
+      function renderPlayerProfile(player, team) {
+        const locked = Boolean(player);
+        joinOptions.classList.toggle("hidden", locked);
+        playerProfile.classList.toggle("hidden", !locked);
+        setupTitle.textContent = locked ? "Your player" : "Join";
+        if (!locked) {
+          return;
+        }
+        playerProfile.innerHTML = "";
+        const dot = document.createElement("span");
+        dot.className = "chip-color";
+        dot.style.background = player.color || "#999";
+        const details = document.createElement("span");
+        details.textContent = `${player.name} (Team ${team})`;
+        playerProfile.appendChild(dot);
+        playerProfile.appendChild(details);
+      }
+
       function renderTeams(state) {
         const teams = state.teams || { "1": [], "2": [] };
+        let currentPlayer = null;
         if (playerId) {
           const inTeam1 = teams["1"].some((player) => player.id === playerId);
           const inTeam2 = teams["2"].some((player) => player.id === playerId);
           if (inTeam1) {
             playerTeam = 1;
+            currentPlayer = teams["1"].find((player) => player.id === playerId);
           } else if (inTeam2) {
             playerTeam = 2;
+            currentPlayer = teams["2"].find((player) => player.id === playerId);
           }
         }
+        renderPlayerProfile(state.game_started ? currentPlayer : null, playerTeam);
         count1.textContent = `Member size ${teams["1"].length}`;
         count2.textContent = `Member size ${teams["2"].length}`;
         list1.innerHTML = "";
@@ -518,6 +562,16 @@
           name.textContent = player.name;
           li.appendChild(dot);
           li.appendChild(name);
+          if (hasHostPrivileges) {
+            const move = document.createElement("button");
+            move.type = "button";
+            move.className = "move-player ghost";
+            move.textContent = "Move to Team 2";
+            move.addEventListener("click", () => {
+              ws.send(JSON.stringify({ type: "move_player", player_id: player.id, team: 2 }));
+            });
+            li.appendChild(move);
+          }
           list1.appendChild(li);
         });
         teams["2"].forEach((player) => {
@@ -530,6 +584,16 @@
           name.textContent = player.name;
           li.appendChild(dot);
           li.appendChild(name);
+          if (hasHostPrivileges) {
+            const move = document.createElement("button");
+            move.type = "button";
+            move.className = "move-player ghost";
+            move.textContent = "Move to Team 1";
+            move.addEventListener("click", () => {
+              ws.send(JSON.stringify({ type: "move_player", player_id: player.id, team: 1 }));
+            });
+            li.appendChild(move);
+          }
           list2.appendChild(li);
         });
       }
@@ -597,9 +661,6 @@
 
       function applyGameState(state) {
         gameState = state;
-        if (!hasHostPrivileges && (state.phase === "image" || state.phase === "question" || state.phase === "reveal")) {
-          setupPanel.classList.add("hidden");
-        }
         score1.textContent = state.scores ? state.scores["1"] : "0";
         score2.textContent = state.scores ? state.scores["2"] : "0";
         const activeTeam = state.active_team ? `Team ${state.active_team}` : "Team ?";
@@ -747,12 +808,7 @@
               break;
             }
             case "lobby_state": {
-              joinAllowed = msg.join_allowed;
               renderTeams(msg);
-              if (!joinAllowed) {
-                setSetupDisabled(true);
-                setStatus(playerStatus, "Joining is closed.");
-              }
               break;
             }
             case "game_state": {
@@ -869,6 +925,18 @@
       revealQuestionBtn.addEventListener("click", () => {
         if (!hasHostPrivileges) return;
         ws.send(JSON.stringify({ type: "reveal_question", round_type: roundType.value }));
+      });
+
+      startGameBtn.addEventListener("click", () => {
+        if (!hasHostPrivileges) return;
+        ws.send(JSON.stringify({ type: "start_game" }));
+        setStatus(controlStatus, "Starting game...");
+      });
+
+      resetGameBtn.addEventListener("click", () => {
+        if (!hasHostPrivileges) return;
+        ws.send(JSON.stringify({ type: "reset_game" }));
+        setStatus(controlStatus, "Resetting game...");
       });
 
       copyLink.addEventListener("click", async () => {
