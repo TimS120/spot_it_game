@@ -1,0 +1,12 @@
+{
+  "name": "Example: Find the star",
+  "questions": [
+    {
+      "question": "Find the star in the night sky.",
+      "default_type": "individual_blind",
+      "image": "question.svg",
+      "reveal_image": "reveal.svg",
+      "solution": { "x": 0.68, "y": 0.32, "r": 0.08 }
+    }
+  ]
+}

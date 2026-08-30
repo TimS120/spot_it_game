@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import copy
 import json
 import secrets
 import time
@@ -34,16 +36,19 @@ app = FastAPI(lifespan=lifespan)
 
 BASE_DIR = Path(__file__).resolve().parent
 INDEX_PATH = BASE_DIR / "index.html"
+EDITOR_PATH = BASE_DIR / "editor.html"
 STATIC_DIR = BASE_DIR / "static"
-RESULTS_PATH = STATIC_DIR / "results.json"
-IMAGES_DIR = STATIC_DIR / "images"
-OPTIMIZED_IMAGES_DIR = IMAGES_DIR / "_optimized"
+DATA_DIR = BASE_DIR / "data"
+GAMESETS_DIR = DATA_DIR / "game_sets"
 IMAGE_TARGET_SIZE = int(os.getenv("IMAGE_TARGET_SIZE", "1080"))
 IMAGE_JPEG_QUALITY = int(os.getenv("IMAGE_JPEG_QUALITY", "82"))
 PIL_AVAILABLE = Image is not None
 RESAMPLE_LANCZOS = Image.Resampling.LANCZOS if PIL_AVAILABLE and hasattr(Image, "Resampling") else getattr(Image, "LANCZOS", None)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+GAMESETS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/data", StaticFiles(directory=DATA_DIR), name="data")
 
 rooms_lock = asyncio.Lock()
 rooms: Dict[str, Dict[str, Any]] = {}
@@ -82,146 +87,6 @@ cloudflared_public_url: Optional[str] = None
 ROUND_DURATION_SECONDS = 60.0
 
 
-def _load_rounds() -> List[Dict[str, Any]]:
-    if RESULTS_PATH.exists():
-        try:
-            raw = json.loads(RESULTS_PATH.read_text(encoding="utf-8"))
-            if isinstance(raw, list):
-                return [item for item in raw if isinstance(item, dict)]
-            if isinstance(raw, dict):
-                legacy_rounds = raw.get("rounds", [])
-                if isinstance(legacy_rounds, list):
-                    return [item for item in legacy_rounds if isinstance(item, dict)]
-        except json.JSONDecodeError:
-            return []
-    return []
-
-
-ROUNDS = _load_rounds()
-
-
-def _is_remote_image(path: str) -> bool:
-    return bool(re.match(r"^[a-z][a-z0-9+.-]*://", path, flags=re.IGNORECASE))
-
-
-def _resolve_local_image_path(path: str) -> Optional[Path]:
-    candidate = path.strip().replace("\\", "/")
-    if not candidate or _is_remote_image(candidate):
-        return None
-    if candidate.startswith("/"):
-        candidate = candidate[1:]
-    if candidate.startswith("static/"):
-        candidate = candidate[len("static/") :]
-    if candidate.startswith("images/"):
-        candidate = candidate[len("images/") :]
-    file_path = (IMAGES_DIR / candidate).resolve()
-    images_root = IMAGES_DIR.resolve()
-    if images_root not in file_path.parents and file_path != images_root:
-        return None
-    return file_path
-
-
-def _letterbox_transform(source_width: int, source_height: int) -> Dict[str, float]:
-    side = float(max(source_width, source_height))
-    scale_x = float(source_width) / side
-    scale_y = float(source_height) / side
-    pad_x = (1.0 - scale_x) / 2.0
-    pad_y = (1.0 - scale_y) / 2.0
-    return {"scale_x": scale_x, "scale_y": scale_y, "pad_x": pad_x, "pad_y": pad_y}
-
-
-def _apply_letterbox_solution(solution: Optional[Dict[str, Any]], transform: Dict[str, float]) -> Optional[Dict[str, Any]]:
-    if not isinstance(solution, dict):
-        return None
-    x = float(solution.get("x", 0.5))
-    y = float(solution.get("y", 0.5))
-    r = float(solution.get("r", 0.06))
-    return {
-        "x": transform["pad_x"] + x * transform["scale_x"],
-        "y": transform["pad_y"] + y * transform["scale_y"],
-        "r": r * transform["scale_x"],
-    }
-
-
-def _derive_reveal_image_path(image_path: str) -> str:
-    path = image_path.strip()
-    if not path:
-        return path
-    # Keep query/hash suffixes intact.
-    suffix = ""
-    split_idx = min([idx for idx in [path.find("?"), path.find("#")] if idx != -1], default=-1)
-    if split_idx != -1:
-        suffix = path[split_idx:]
-        path = path[:split_idx]
-    dot = path.rfind(".")
-    if dot <= 0:
-        derived = f"{path}_1"
-    else:
-        derived = f"{path[:dot]}_1{path[dot:]}"
-    return f"{derived}{suffix}"
-
-
-def _optimize_round_image(path: str) -> Tuple[Optional[str], Optional[Dict[str, float]]]:
-    local_path = _resolve_local_image_path(path)
-    if not local_path or not local_path.exists() or not PIL_AVAILABLE:
-        return None, None
-    try:
-        stat = local_path.stat()
-        cache_key = hashlib.sha256(
-            f"{local_path.as_posix()}|{stat.st_mtime_ns}|{stat.st_size}|{IMAGE_TARGET_SIZE}|{IMAGE_JPEG_QUALITY}".encode(
-                "utf-8"
-            )
-        ).hexdigest()[:12]
-        OPTIMIZED_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
-        out_name = f"{local_path.stem}.{cache_key}.jpg"
-        out_path = OPTIMIZED_IMAGES_DIR / out_name
-        with Image.open(local_path) as src:
-            src_rgb = src.convert("RGB")
-            source_width, source_height = src_rgb.size
-            side = max(source_width, source_height)
-            square = Image.new("RGB", (side, side), (0, 0, 0))
-            offset = ((side - source_width) // 2, (side - source_height) // 2)
-            square.paste(src_rgb, offset)
-            if side != IMAGE_TARGET_SIZE:
-                if RESAMPLE_LANCZOS is not None:
-                    square = square.resize((IMAGE_TARGET_SIZE, IMAGE_TARGET_SIZE), RESAMPLE_LANCZOS)
-                else:
-                    square = square.resize((IMAGE_TARGET_SIZE, IMAGE_TARGET_SIZE))
-            if not out_path.exists():
-                square.save(out_path, format="JPEG", quality=IMAGE_JPEG_QUALITY, optimize=True, progressive=True)
-        optimized_relative = f"_optimized/{out_name}"
-        transform = _letterbox_transform(source_width, source_height)
-        return optimized_relative, transform
-    except (OSError, UnidentifiedImageError, ValueError):
-        return None, None
-
-
-def _prepare_round_assets() -> None:
-    if not PIL_AVAILABLE:
-        print("Pillow not installed. Skipping image optimization; serving original files.")
-    for round_data in ROUNDS:
-        transform = None
-        image_path = round_data.get("image")
-        if not isinstance(image_path, str) or not image_path.strip():
-            continue
-        if not isinstance(round_data.get("reveal_image"), str) or not round_data.get("reveal_image", "").strip():
-            round_data["reveal_image"] = _derive_reveal_image_path(image_path)
-        for image_key in ("image", "reveal_image"):
-            raw_path = round_data.get(image_key)
-            if not isinstance(raw_path, str) or not raw_path.strip():
-                continue
-            optimized_path, image_transform = _optimize_round_image(raw_path)
-            if optimized_path:
-                round_data[image_key] = optimized_path
-                if transform is None and image_transform:
-                    transform = image_transform
-        if transform:
-            mapped_solution = _apply_letterbox_solution(round_data.get("solution"), transform)
-            if mapped_solution is not None:
-                round_data["solution"] = mapped_solution
-
-
-_prepare_round_assets()
 
 
 def _new_room() -> Dict[str, Any]:
@@ -237,6 +102,7 @@ def _new_room() -> Dict[str, Any]:
         "phase": "idle",
         "active_team": 1,
         "question": "",
+        "question_duration_seconds": ROUND_DURATION_SECONDS,
         "timer_end": None,
         "clicks": {},
         "scores": {1: 0, 2: 0},
@@ -244,6 +110,9 @@ def _new_room() -> Dict[str, Any]:
         "solution": None,
         "team_radius": 0.06,
         "round_data": None,
+        "game_set_id": None,
+        "game_set_name": None,
+        "rounds": [],
         "timer_task": None,
         "leader_id": None,
     }
@@ -402,10 +271,11 @@ def _find_player_by_id(room: Dict[str, Any], player_id: str) -> Optional[Dict[st
     return None
 
 
-def _round_data(round_index: int) -> Optional[Dict[str, Any]]:
-    if round_index <= 0 or round_index > len(ROUNDS):
+def _round_data(room: Dict[str, Any], round_index: int) -> Optional[Dict[str, Any]]:
+    rounds = room.get("rounds", [])
+    if round_index <= 0 or round_index > len(rounds):
         return None
-    return ROUNDS[round_index - 1]
+    return rounds[round_index - 1]
 
 
 def _team_radius_for_solution(solution: Optional[Dict[str, Any]]) -> float:
@@ -429,6 +299,141 @@ def _normalize_round_type(raw_value: Any) -> Optional[str]:
     if value == "leader":
         return "leader"
     return None
+
+
+def _game_set_path(game_set_id: str) -> Path:
+    if not re.fullmatch(r"[a-zA-Z0-9_-]{8,80}", game_set_id):
+        raise HTTPException(status_code=404, detail="Game-set not found.")
+    return GAMESETS_DIR / game_set_id
+
+
+def _read_game_set(game_set_id: str) -> Dict[str, Any]:
+    path = _game_set_path(game_set_id) / "game.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Game-set not found.")
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        raise HTTPException(status_code=422, detail="Game-set data is invalid.")
+    if not isinstance(raw, dict):
+        raise HTTPException(status_code=422, detail="Game-set data is invalid.")
+    return raw
+
+
+def _public_game_set(game_set_id: str, raw: Dict[str, Any]) -> Dict[str, Any]:
+    questions = []
+    for item in raw.get("questions", []):
+        if not isinstance(item, dict):
+            continue
+        question = copy.deepcopy(item)
+        for key in ("image", "reveal_image"):
+            filename = question.get(key)
+            if isinstance(filename, str):
+                question[key] = f"/data/game_sets/{game_set_id}/images/{filename}"
+        questions.append(question)
+    return {"id": game_set_id, "name": raw.get("name", ""), "questions": questions}
+
+
+def _list_game_sets() -> List[Dict[str, Any]]:
+    result = []
+    for folder in GAMESETS_DIR.iterdir():
+        if not folder.is_dir():
+            continue
+        try:
+            raw = _read_game_set(folder.name)
+            questions = raw.get("questions", [])
+            result.append({"id": folder.name, "name": raw.get("name", "Untitled"), "question_count": len(questions) if isinstance(questions, list) else 0})
+        except HTTPException:
+            continue
+    return sorted(result, key=lambda item: item["name"].lower())
+
+
+def _game_set_is_active(game_set_id: str) -> bool:
+    return any(room.get("game_started") and room.get("game_set_id") == game_set_id for room in rooms.values())
+
+
+def _decode_image(data_url: Any) -> Tuple[bytes, str]:
+    if not isinstance(data_url, str):
+        raise HTTPException(status_code=422, detail="Both images are required.")
+    match = re.fullmatch(r"data:image/(png|jpeg|jpg|webp|gif|bmp);base64,([A-Za-z0-9+/=]+)", data_url)
+    if not match:
+        raise HTTPException(status_code=422, detail="Images must be valid PNG files after conversion.")
+    try:
+        content = base64.b64decode(match.group(2), validate=True)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Image data is invalid.")
+    if not content or len(content) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=422, detail="Each image must be smaller than 15 MB.")
+    if PIL_AVAILABLE:
+        try:
+            with Image.open(__import__("io").BytesIO(content)) as image:
+                image.verify()
+        except (OSError, SyntaxError, UnidentifiedImageError):
+            raise HTTPException(status_code=422, detail="An uploaded image could not be read.")
+    return content, {"png": "png", "jpeg": "jpg", "jpg": "jpg", "webp": "webp", "gif": "gif", "bmp": "bmp"}[match.group(1)]
+
+
+def _validate_and_store_game_set(game_set_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    name = payload.get("name")
+    questions = payload.get("questions")
+    if not isinstance(name, str) or not name.strip() or len(name.strip()) > 100:
+        raise HTTPException(status_code=422, detail="A game-set name of up to 100 characters is required.")
+    if not isinstance(questions, list) or not questions:
+        raise HTTPException(status_code=422, detail="A game-set needs at least one complete question.")
+    if len(questions) > 100:
+        raise HTTPException(status_code=422, detail="A game-set can contain at most 100 questions.")
+    folder = _game_set_path(game_set_id)
+    images_dir = folder / "images"
+    folder.mkdir(parents=True, exist_ok=True)
+    images_dir.mkdir(exist_ok=True)
+    stored_questions = []
+    for index, item in enumerate(questions, start=1):
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=422, detail=f"Question {index} is invalid.")
+        text = item.get("question")
+        solution = item.get("solution")
+        kind = _normalize_round_type(item.get("default_type"))
+        if not isinstance(text, str) or not text.strip() or len(text.strip()) > 200:
+            raise HTTPException(status_code=422, detail=f"Question {index} needs question text.")
+        if kind not in ("individual_blind", "individual_seeing", "leader"):
+            raise HTTPException(status_code=422, detail=f"Question {index} needs a valid default type.")
+        if not isinstance(solution, dict):
+            raise HTTPException(status_code=422, detail=f"Question {index} needs a solution circle.")
+        try:
+            x, y, r = float(solution["x"]), float(solution["y"]), float(solution["r"])
+        except (KeyError, TypeError, ValueError):
+            raise HTTPException(status_code=422, detail=f"Question {index} has an invalid solution circle.")
+        if not (0 <= x <= 1 and 0 <= y <= 1 and 0.01 <= r <= 0.5):
+            raise HTTPException(status_code=422, detail=f"Question {index} has an invalid solution circle.")
+        duration = item.get("duration_seconds", ROUND_DURATION_SECONDS)
+        try:
+            duration = float(duration)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail=f"Question {index} has an invalid time limit.")
+        if not 5 <= duration <= 600:
+            raise HTTPException(status_code=422, detail=f"Question {index} time limit must be between 5 and 600 seconds.")
+        stored = {
+            "question": text.strip(),
+            "default_type": kind,
+            "duration_seconds": duration,
+            "solution": {"x": x, "y": y, "r": r},
+            "show_crosshair": bool(item.get("show_crosshair")),
+        }
+        for key in ("image", "reveal_image"):
+            value = item.get(key)
+            if isinstance(value, str) and value.startswith("/data/game_sets/"):
+                filename = Path(value.split("?")[0]).name
+                if not re.fullmatch(r"[a-zA-Z0-9_-]+\.(png|jpg|webp)", filename) or not (images_dir / filename).exists():
+                    raise HTTPException(status_code=422, detail=f"Question {index} has a missing {key.replace('_', ' ')}.")
+            else:
+                content, extension = _decode_image(value)
+                filename = f"q{index}_{key}_{secrets.token_hex(6)}.{extension}"
+                (images_dir / filename).write_bytes(content)
+            stored[key] = filename
+        stored_questions.append(stored)
+    raw = {"name": name.strip(), "questions": stored_questions}
+    (folder / "game.json").write_text(json.dumps(raw, indent=2), encoding="utf-8")
+    return _public_game_set(game_set_id, raw)
 
 
 def _solution_overlap(team_center: Tuple[float, float], team_radius: float, solution: Dict[str, Any]) -> bool:
@@ -488,6 +493,12 @@ def _game_snapshot(room: Dict[str, Any]) -> Dict[str, Any]:
         "team_radius": room["team_radius"],
         "leader_id": leader_id,
         "leader_name": leader.get("name") if leader else None,
+        "default_round_type": round_data.get("default_type"),
+        "default_duration_seconds": round_data.get("duration_seconds") if round_data else None,
+        "next_default_duration_seconds": (room.get("rounds") or [{}])[room["round_index"]].get("duration_seconds") if room["round_index"] < len(room.get("rounds", [])) else None,
+        "game_set_id": room.get("game_set_id"),
+        "game_set_name": room.get("game_set_name"),
+        "next_default_type": (room.get("rounds") or [{}])[room["round_index"]].get("default_type") if room["round_index"] < len(room.get("rounds", [])) else None,
     }
 
 
@@ -555,6 +566,61 @@ async def _cleanup_rooms() -> None:
 @app.get("/")
 async def index() -> HTMLResponse:
     return HTMLResponse(INDEX_PATH.read_text(encoding="utf-8"))
+
+
+@app.get("/editor")
+async def editor() -> HTMLResponse:
+    return HTMLResponse(EDITOR_PATH.read_text(encoding="utf-8"))
+
+
+@app.get("/api/game-sets")
+async def list_game_sets() -> List[Dict[str, Any]]:
+    return _list_game_sets()
+
+
+@app.get("/api/game-sets/{game_set_id}")
+async def get_game_set(game_set_id: str) -> Dict[str, Any]:
+    return _public_game_set(game_set_id, _read_game_set(game_set_id))
+
+
+@app.post("/api/game-sets")
+async def create_game_set(request: Request) -> Dict[str, Any]:
+    payload = await request.json()
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="Game-set data is invalid.")
+    return _validate_and_store_game_set(secrets.token_urlsafe(9).replace("-", "_").replace("~", "_"), payload)
+
+
+@app.put("/api/game-sets/{game_set_id}")
+async def save_game_set(game_set_id: str, request: Request) -> Dict[str, Any]:
+    _read_game_set(game_set_id)
+    if _game_set_is_active(game_set_id):
+        raise HTTPException(status_code=409, detail="This game-set is read-only while a game is active.")
+    payload = await request.json()
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="Game-set data is invalid.")
+    return _validate_and_store_game_set(game_set_id, payload)
+
+
+@app.post("/api/game-sets/{game_set_id}/duplicate")
+async def duplicate_game_set(game_set_id: str) -> Dict[str, Any]:
+    raw = _read_game_set(game_set_id)
+    target_id = secrets.token_urlsafe(9).replace("-", "_").replace("~", "_")
+    shutil.copytree(_game_set_path(game_set_id), _game_set_path(target_id))
+    raw["name"] = f"{str(raw.get('name', 'Game set'))} copy"
+    (_game_set_path(target_id) / "game.json").write_text(json.dumps(raw, indent=2), encoding="utf-8")
+    return _public_game_set(target_id, raw)
+
+
+@app.delete("/api/game-sets/{game_set_id}")
+async def delete_game_set(game_set_id: str) -> Dict[str, bool]:
+    folder = _game_set_path(game_set_id)
+    if not folder.exists():
+        raise HTTPException(status_code=404, detail="Game-set not found.")
+    if _game_set_is_active(game_set_id):
+        raise HTTPException(status_code=409, detail="This game-set is read-only while a game is active.")
+    shutil.rmtree(folder)
+    return {"ok": True}
 
 
 @app.post("/create-room")
@@ -695,11 +761,40 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                 continue
 
             if role == "host":
+                if msg_type == "select_game_set":
+                    selected_id = msg.get("game_set_id")
+                    if not isinstance(selected_id, str):
+                        await _safe_send(ws, {"type": "error", "message": "Choose a game-set."})
+                        continue
+                    try:
+                        raw_set = _read_game_set(selected_id)
+                    except HTTPException as exc:
+                        await _safe_send(ws, {"type": "error", "message": str(exc.detail)})
+                        continue
+                    async with rooms_lock:
+                        room = rooms.get(room_id)
+                        if not room:
+                            await _safe_send(ws, {"type": "error", "message": "Room no longer exists."})
+                            continue
+                        if room["game_started"]:
+                            await _safe_send(ws, {"type": "error", "message": "The game-set is read-only while a game is active."})
+                            continue
+                        room["game_set_id"] = selected_id
+                        room["game_set_name"] = str(raw_set.get("name", ""))
+                        room["rounds"] = _public_game_set(selected_id, raw_set)["questions"]
+                        room["last_activity"] = _now()
+                        game_snapshot = _game_snapshot(room)
+                    await _safe_send(ws, {"type": "game_state", **game_snapshot})
+                    continue
+
                 if msg_type == "start_game":
                     async with rooms_lock:
                         room = rooms.get(room_id)
                         if not room:
                             await _safe_send(ws, {"type": "error", "message": "Room no longer exists."})
+                            continue
+                        if not room.get("rounds"):
+                            await _safe_send(ws, {"type": "error", "message": "Select a game-set before starting."})
                             continue
                         room["join_allowed"] = True
                         room["game_started"] = True
@@ -725,9 +820,12 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                         if not room:
                             await _safe_send(ws, {"type": "error", "message": "Room no longer exists."})
                             continue
+                        if not room["game_started"]:
+                            await _safe_send(ws, {"type": "error", "message": "Start the game after selecting a game-set first."})
+                            continue
                         _cancel_timer(room)
                         room["round_index"] += 1
-                        data = _round_data(room["round_index"])
+                        data = _round_data(room, room["round_index"])
                         if not data:
                             room["round_index"] -= 1
                             await _safe_send(ws, {"type": "error", "message": "No more rounds available."})
@@ -736,6 +834,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                         room["round_data"] = data
                         room["phase"] = "image"
                         room["question"] = str(data.get("question", "")).strip()[:200]
+                        room["question_duration_seconds"] = float(data.get("duration_seconds", ROUND_DURATION_SECONDS))
                         room["timer_end"] = None
                         room["clicks"] = {}
                         room["centroid"] = None
@@ -811,6 +910,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
 
                 if msg_type == "reveal_question":
                     round_type = _normalize_round_type(msg.get("round_type"))
+                    requested_duration = msg.get("duration_seconds")
                     async with rooms_lock:
                         room = rooms.get(room_id)
                         if not room:
@@ -822,8 +922,18 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                         if round_type in ("individual_blind", "individual_seeing", "leader"):
                             room["round_type"] = round_type
                             room["leader_id"] = None
+                        if requested_duration is not None:
+                            try:
+                                requested_duration = float(requested_duration)
+                            except (TypeError, ValueError):
+                                await _safe_send(ws, {"type": "error", "message": "Time limit must be between 5 and 600 seconds."})
+                                continue
+                            if not 5 <= requested_duration <= 600:
+                                await _safe_send(ws, {"type": "error", "message": "Time limit must be between 5 and 600 seconds."})
+                                continue
+                            room["question_duration_seconds"] = requested_duration
                         room["phase"] = "question"
-                        room["timer_end"] = _now() + ROUND_DURATION_SECONDS
+                        room["timer_end"] = _now() + room.get("question_duration_seconds", ROUND_DURATION_SECONDS)
                         room["last_activity"] = _now()
                         _cancel_timer(room)
                         room["timer_task"] = asyncio.create_task(_finish_round(room_id))

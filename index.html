@@ -365,12 +365,20 @@
       <section id="game-panel" class="panel">
         <div id="host-controls" class="host-controls hidden">
           <div class="control-row">
+            <label for="game-set">Game-set</label>
+            <select id="game-set"><option value="">Loading game-sets…</option></select>
+            <a href="/editor" target="_blank" rel="noopener">Manage game-sets</a>
+          </div>
+          <div class="control-row">
             <button id="start-game">Start game</button>
             <select id="round-type">
               <option value="individual_blind">Individual round (blind)</option>
               <option value="individual_seeing">Individual round (seeing)</option>
               <option value="leader">Leader round</option>
             </select>
+            <span id="default-round-type" class="status">Default: —</span>
+            <input id="round-duration" type="number" min="5" max="600" value="60" title="Question time limit in seconds" />
+            <span id="default-duration" class="status">Default time: —</span>
             <button id="start-round">Start next round</button>
             <button id="restart-round" class="ghost">Restart round</button>
           </div>
@@ -459,6 +467,10 @@
       const hostControls = document.getElementById("host-controls");
       const roundType = document.getElementById("round-type");
       const startGameBtn = document.getElementById("start-game");
+      const gameSet = document.getElementById("game-set");
+      const defaultRoundType = document.getElementById("default-round-type");
+      const roundDuration = document.getElementById("round-duration");
+      const defaultDuration = document.getElementById("default-duration");
       const startRoundBtn = document.getElementById("start-round");
       const restartRoundBtn = document.getElementById("restart-round");
       const revealQuestionBtn = document.getElementById("reveal-question");
@@ -473,6 +485,14 @@
       const boardFrame = document.getElementById("board-frame");
       const count1 = document.getElementById("count-1");
       const count2 = document.getElementById("count-2");
+
+      function updateQuestionButtonLabel() {
+        const seconds = Number(roundDuration.value);
+        revealQuestionBtn.textContent = `Start question (${Number.isFinite(seconds) && seconds > 0 ? seconds : 60}s)`;
+      }
+
+      roundDuration.addEventListener("input", updateQuestionButtonLabel);
+      updateQuestionButtonLabel();
       const list1 = document.getElementById("list-1");
       const list2 = document.getElementById("list-2");
 
@@ -534,6 +554,9 @@
       }
 
       function renderTeams(state) {
+        if (hasHostPrivileges) {
+          gameSet.disabled = Boolean(state.game_started);
+        }
         const teams = state.teams || { "1": [], "2": [] };
         let currentPlayer = null;
         if (playerId) {
@@ -661,6 +684,27 @@
 
       function applyGameState(state) {
         gameState = state;
+        if (hasHostPrivileges && state.game_set_id) {
+          gameSet.value = state.game_set_id;
+        }
+        if (hasHostPrivileges && state.next_default_type && (state.phase === "idle" || state.phase === "reveal")) {
+          roundType.value = state.next_default_type;
+        }
+        if (hasHostPrivileges) {
+          const defaultType = state.default_round_type || state.next_default_type;
+          const labels = {
+            individual_blind: "Individual round (blind)",
+            individual_seeing: "Individual round (seeing)",
+            leader: "Leader round",
+          };
+          defaultRoundType.textContent = `Default: ${labels[defaultType] || "—"}`;
+          const duration = state.default_duration_seconds || state.next_default_duration_seconds;
+          defaultDuration.textContent = `Default time: ${duration || "—"}${duration ? "s" : ""}`;
+          if (duration && (state.phase === "idle" || state.phase === "reveal")) {
+            roundDuration.value = duration;
+            updateQuestionButtonLabel();
+          }
+        }
         score1.textContent = state.scores ? state.scores["1"] : "0";
         score2.textContent = state.scores ? state.scores["2"] : "0";
         const activeTeam = state.active_team ? `Team ${state.active_team}` : "Team ?";
@@ -796,6 +840,7 @@
                 const link = msg.invite_url || `${window.location.origin}/?room=${roomId}`;
                 inviteLink.value = link;
                 setStatus(hostStatus, "Room ready. Share the link.");
+                loadGameSets();
               }
               break;
             }
@@ -877,6 +922,23 @@
           });
       }
 
+      async function loadGameSets() {
+        try {
+          const response = await fetch("/api/game-sets");
+          const sets = await response.json();
+          gameSet.innerHTML = '<option value="">Choose a game-set…</option>';
+          sets.forEach((set) => {
+            const option = document.createElement("option");
+            option.value = set.id;
+            option.textContent = `${set.name} (${set.question_count} questions)`;
+            gameSet.appendChild(option);
+          });
+          if (!sets.length) setStatus(hostStatus, "Create a game-set before starting a game.");
+        } catch (_) {
+          gameSet.innerHTML = '<option value="">Could not load game-sets</option>';
+        }
+      }
+
       function bootstrapPlayer() {
         setupPanel.classList.remove("hidden");
         hostControls.classList.add("hidden");
@@ -924,13 +986,19 @@
 
       revealQuestionBtn.addEventListener("click", () => {
         if (!hasHostPrivileges) return;
-        ws.send(JSON.stringify({ type: "reveal_question", round_type: roundType.value }));
+        ws.send(JSON.stringify({ type: "reveal_question", round_type: roundType.value, duration_seconds: roundDuration.value }));
       });
 
       startGameBtn.addEventListener("click", () => {
         if (!hasHostPrivileges) return;
         ws.send(JSON.stringify({ type: "start_game" }));
         setStatus(controlStatus, "Starting game...");
+      });
+
+      gameSet.addEventListener("change", () => {
+        if (hasHostPrivileges && gameSet.value) {
+          ws.send(JSON.stringify({ type: "select_game_set", game_set_id: gameSet.value }));
+        }
       });
 
       resetGameBtn.addEventListener("click", () => {
